@@ -1,0 +1,22 @@
+services:
+  winsignin:
+    build: .
+    restart: unless-stopped
+    environment:
+      # 请改成随机强口令，不要提交到 Git
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?请在 .env 中设置 ADMIN_PASSWORD}
+      # 固定给 AstrBot 读取签到列表的只读凭证；不会因管理网页重新登录而变化
+      WINSIGNIN_API_TOKEN: ${WINSIGNIN_API_TOKEN:-}
+      DATA_DIR: /data
+      BIND: 0.0.0.0:1112
+      CAS_PROXY_BIND: 0.0.0.0:1113
+      CAS_PROXY_PUBLIC_URL: https://cqupt.xiaohundun.cc
+      MAIN_ORIGIN: https://sign.xiaohundun.cc
+    volumes:
+      - winsignin-data:/data
+    ports:
+      - "127.0.0.1:1112:1112"
+      - "127.0.0.1:1113:1113"
+
+volumes:
+  winsignin-data:

@@ -1,0 +1,32 @@
+{
+  "base_url": {
+    "type": "string",
+    "description": "winSignIn 服务地址，例如 http://127.0.0.1:1112",
+    "default": "http://127.0.0.1:1112"
+  },
+  "api_token": {
+    "type": "string",
+    "description": "固定的 winSignIn 只读 API token；须与服务端 .env 的 WINSIGNIN_API_TOKEN 相同，不会随网页登录改变",
+    "default": ""
+  },
+  "session_id": {
+    "type": "string",
+    "description": "通知目标群号；必须同时加入下面的群白名单",
+    "default": ""
+  },
+  "allowed_groups": {
+    "type": "string",
+    "description": "群白名单，多个群号用英文逗号分隔；留空时禁止推送",
+    "default": ""
+  },
+  "message_type": {
+    "type": "string",
+    "description": "消息类型，仅允许 group 群聊",
+    "default": "group"
+  },
+  "interval": {
+    "type": "int",
+    "description": "轮询间隔（秒），最小 10 秒",
+    "default": 20
+  }
+}
