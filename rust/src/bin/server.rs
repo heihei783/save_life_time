@@ -1,7 +1,7 @@
-use axum::{extract::{Path, State}, http::{header, HeaderMap, StatusCode}, response::{Html, IntoResponse, Response}, routing::{get, post}, Json, Router};
+use axum::{extract::{Path, State}, http::{header, HeaderMap, HeaderValue, StatusCode}, response::{Html, IntoResponse, Response}, routing::{get, post}, Json, Router};
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
-use std::{env, fs::{self, OpenOptions}, io::Write, net::SocketAddr, os::unix::fs::{OpenOptionsExt, PermissionsExt}, path::PathBuf, sync::{Arc, Mutex}, time::Duration};
+use std::{collections::HashMap, env, fs::{self, OpenOptions}, io::Write, net::SocketAddr, os::unix::fs::{OpenOptionsExt, PermissionsExt}, path::PathBuf, sync::{Arc, Mutex}, time::Duration};
 
 use winsignin::{self as core, AccountInfo, LoginResult, RollcallsResult, SignResult};
 
@@ -75,7 +75,31 @@ async fn cas_proxy_forward(id:String,host:&str,path:String,request:axum::http::R
 async fn health() -> Json<serde_json::Value> { Json(serde_json::json!({"ok":true,"service":"winsignin"})) }
 async fn refresh(State(st): State<AppState>, headers: HeaderMap) -> Response { let list=match authorized_accounts(&st,&headers){Ok(x)=>x,Err(r)=>return r}; let mut updated=0; for a in list { if a.cas_cookie.is_empty(){continue;} let id=a.id.clone(); let r=tokio::task::spawn_blocking(move||core::refresh_session(a.cas_cookie)).await.unwrap(); if r.ok { let mut s=st.inner.lock().unwrap(); if let Some(x)=s.accounts.iter_mut().find(|x|x.id==id) { x.cookie=r.cookie; x.cas_cookie=r.cas_cookie; updated+=1; } save_store(&s); } } Json(serde_json::json!({"ok":true,"updated":updated})).into_response() }
 
-async fn rollcalls(State(st): State<AppState>, headers: HeaderMap) -> Response { let list=match authorized_rollcall_accounts(&st,&headers){Ok(x)=>x,Err(r)=>return r}; let mut all=Vec::new(); for a in list.into_iter().filter(|a|a.enabled) { let r:RollcallsResult=tokio::task::spawn_blocking(move||core::get_rollcalls(a.cookie)).await.unwrap(); if r.ok {all.extend(r.rollcalls.into_iter().map(|x|serde_json::json!({"id":x.id,"course_title":x.course_title,"title":x.title,"is_number":x.is_number,"is_radar":x.is_radar,"is_expired":x.is_expired,"status":x.status,"rollcall_time":x.rollcall_time}))); } } Json(all).into_response() }
+async fn rollcalls(State(st): State<AppState>, headers: HeaderMap) -> Response {
+    let list=match authorized_rollcall_accounts(&st,&headers){Ok(x)=>x,Err(r)=>return r};
+    let mut grouped:HashMap<String,serde_json::Value>=HashMap::new();
+    let mut accounts_checked=0usize;
+    let mut complete=true;
+    for a in list.into_iter().filter(|a|a.enabled) {
+        accounts_checked+=1;
+        let account_id=a.id.clone();
+        let account_name=a.name.clone();
+        let r:RollcallsResult=tokio::task::spawn_blocking(move||core::get_rollcalls(a.cookie)).await.unwrap();
+        if !r.ok { complete=false; continue; }
+        for x in r.rollcalls {
+            let rid=x.id.clone();
+            let entry=grouped.entry(rid.clone()).or_insert_with(||serde_json::json!({"id":rid,"course_title":x.course_title,"title":x.title,"is_number":x.is_number,"is_radar":x.is_radar,"is_expired":x.is_expired,"status":x.status,"rollcall_time":x.rollcall_time,"accounts":[]}));
+            if x.is_expired { entry["is_expired"] = serde_json::Value::Bool(true); }
+            if let Some(accounts)=entry.get_mut("accounts").and_then(|v|v.as_array_mut()) {
+                accounts.push(serde_json::json!({"account_id":account_id,"name":account_name,"status":x.status}));
+            }
+        }
+    }
+    complete &= accounts_checked>0;
+    let mut response=Json(grouped.into_values().collect::<Vec<_>>()).into_response();
+    response.headers_mut().insert("X-Rollcalls-Complete",HeaderValue::from_static(if complete {"true"} else {"false"}));
+    response
+}
 async fn qr(State(st): State<AppState>, headers: HeaderMap, Json(req): Json<QrReq>) -> Response { let raw=req.raw; let (accounts,settings)=match authorized_signing_data(&st,&headers){Ok(x)=>x,Err(r)=>return r}; let mut out=Vec::new(); for (i,a) in accounts.into_iter().enumerate() { stagger(&settings,i).await; let id=a.id.clone(); let raw=raw.clone(); let r:SignResult=tokio::task::spawn_blocking(move||core::sign_qr(a.cookie,a.device_id,raw)).await.unwrap(); out.push(serde_json::json!({"account_id":id,"success":r.success,"message":r.message,"distance":r.distance})); } Json(out).into_response() }
 async fn number(State(st): State<AppState>, headers: HeaderMap, Json(req): Json<NumberReq>) -> Response { let (accounts,settings)=match authorized_signing_data(&st,&headers){Ok(x)=>x,Err(r)=>return r}; let mut out=Vec::new(); for (i,a) in accounts.into_iter().enumerate() { stagger(&settings,i).await; let aid=a.id.clone(); let rid=req.rollcall_id.clone(); let code=req.code.clone(); let auto=settings.auto_number; let r=tokio::task::spawn_blocking(move||{let code=if code.is_empty()&&auto {let x=core::get_number_code(a.cookie.clone(),rid.clone()); if !x.ok {return SignResult{success:false,message:x.message,distance:None}} x.code} else {code}; core::sign_number(a.cookie,a.device_id,rid,code)}).await.unwrap(); out.push(serde_json::json!({"account_id":aid,"success":r.success,"message":r.message,"distance":r.distance})); } Json(out).into_response() }
 async fn radar_empty(State(st): State<AppState>, headers: HeaderMap, Json(req): Json<NumberReq>) -> Response { let (accounts,settings)=match authorized_signing_data(&st,&headers){Ok(x)=>x,Err(r)=>return r}; let mut out=Vec::new(); for (i,a) in accounts.into_iter().enumerate() { stagger(&settings,i).await; let aid=a.id.clone(); let rid=req.rollcall_id.clone(); let cookie=a.cookie.clone(); let r=tokio::task::spawn_blocking(move||{let sign=core::sign_radar_empty(cookie.clone(),rid.clone()); if sign.success {let v=core::verify_signed(cookie,rid); SignResult{success:v.ok,message:v.message,distance:None}} else {sign}}).await.unwrap(); out.push(serde_json::json!({"account_id":aid,"success":r.success,"message":r.message})); } Json(out).into_response() }

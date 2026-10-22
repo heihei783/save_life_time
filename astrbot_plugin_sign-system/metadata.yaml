@@ -1,5 +1,5 @@
 name: astrbot_signin_monitor
 desc: Monitor winSignIn rollcalls and notify through AstrBot OneBot
-version: v1.2.0
+version: v1.4.0
 author: personal
 repo: ""

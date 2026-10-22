@@ -16,8 +16,10 @@
 ## 技术栈
 
 - Rust：Axum Web API + 原有 reqwest/CAS/二维码/签到核心
-- 浏览器：原生 HTML/JavaScript、`BarcodeDetector` 摄像头扫码
+- 浏览器：原生 HTML/JavaScript、jsQR 摄像头逐帧扫码、二维码图片识别与原文粘贴备用；jsQR 首次使用时从 jsDelivr 加载，失败时尝试 unpkg
 - 部署：Docker Compose，`/data` 持久化账号会话
+
+摄像头扫码需要 HTTPS（或 localhost）及浏览器摄像头权限。此实现不再依赖 `BarcodeDetector`，适用于支持 `getUserMedia` 的现代 QQ 浏览器等；具体版本仍受浏览器和系统相机权限限制。二维码图片在浏览器本地解码，不会上传到 CDN；CDN 仅用于下载识别库。
 
 ## 目录
 

@@ -428,7 +428,12 @@ fn parse_rollcalls(code: u16, text: &str) -> RollcallsResult {
 
 fn parse_rollcall(v: &serde_json::Value) -> Rollcall {
     let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
-    let b = |k: &str| v.get(k).and_then(|x| x.as_bool()).unwrap_or(false);
+    let b = |k: &str| match v.get(k) {
+        Some(serde_json::Value::Bool(value)) => *value,
+        Some(serde_json::Value::Number(value)) => value.as_i64().map(|n| n != 0).unwrap_or(false),
+        Some(serde_json::Value::String(value)) => matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"),
+        _ => false,
+    };
     Rollcall {
         id: v.get("rollcall_id").map(json_to_string).unwrap_or_default(),
         course_title: s("course_title"),
