@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>winSignIn</title>
   <style>
-    :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#172033;background:#f3f5fa}body{max-width:820px;margin:auto;padding:14px}h1{font-size:1.6rem}section{background:white;padding:16px;margin:12px 0;border-radius:14px;box-shadow:0 2px 10px #14244712}input,button{padding:10px;margin:4px;border:1px solid #cbd3e1;border-radius:8px;font:inherit}button{cursor:pointer;background:#1a63d8;color:white;border:0}button.secondary{background:#e9effa;color:#234}button:disabled{opacity:.5}.row{display:flex;flex-wrap:wrap;align-items:center;gap:4px}.row input{min-width:0;flex:1}.muted{color:#64708a;font-size:.9rem}.rollcall{border-top:1px solid #edf0f5;padding:10px 0}.ok{color:#087c43}.bad{color:#bd2525}pre{white-space:pre-wrap;overflow-wrap:anywhere}.hidden{display:none}video{width:100%;max-height:320px;background:#111;border-radius:8px}
+    :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#172033;background:#f3f5fa}body{max-width:820px;margin:auto;padding:14px}h1{font-size:1.6rem}section{background:white;padding:16px;margin:12px 0;border-radius:14px;box-shadow:0 2px 10px #14244712}input,button{padding:10px;margin:4px;border:1px solid #cbd3e1;border-radius:8px;font:inherit}button{cursor:pointer;background:#1a63d8;color:white;border:0}button.secondary{background:#e9effa;color:#234}button:disabled{opacity:.5}.row{display:flex;flex-wrap:wrap;align-items:center;gap:4px}.row input{min-width:0;flex:1}.muted{color:#64708a;font-size:.9rem}.rollcall{border-top:1px solid #edf0f5;padding:10px 0}.ok{color:#087c43}.bad{color:#bd2525}pre{white-space:pre-wrap;overflow-wrap:anywhere}.hidden{display:none}.camera-preview{position:relative;overflow:hidden;max-height:320px;background:#111;border-radius:8px}.camera-preview video{display:block;width:100%;max-height:320px;object-fit:contain;background:transparent;border-radius:0;transform-origin:center;transition:transform .1s linear}.scan-guide{position:absolute;top:50%;left:50%;width:280px;aspect-ratio:1;transform:translate(-50%,-50%);border:2px solid #fff;border-radius:6px;box-shadow:0 0 0 999px #0006;pointer-events:none}.zoom-row{display:flex;align-items:center;gap:8px}.zoom-row.hidden{display:none}.zoom-row input[type=range]{min-width:120px;flex:1}.zoom-value{min-width:3.5em;text-align:right;font-variant-numeric:tabular-nums}
   </style>
 </head>
 <body>
@@ -13,16 +13,109 @@
 <main id="app" class="hidden">
   <section><h2>学校账号</h2><div class="row"><input id="user" placeholder="学号/用户名"><input id="pass" type="password" placeholder="密码"><label><input id="remember" type="checkbox" checked>记住 CAS 会话</label><button id="schoolBtn">账号密码快速登录</button><button class="secondary" id="casWebBtn">学校网页认证（验证码/短信）</button></div><div id="casPanel" class="hidden"><p class="muted">在学校认证页面内完成密码、验证码或短信验证。认证域与管理站点分离；完成后此处会自动保存会话。</p><iframe id="casFrame" title="学校统一认证" style="width:100%;height:70vh;border:1px solid #ccd3e1;border-radius:10px"></iframe></div><div class="row"><button class="secondary" id="refreshBtn">刷新登录会话</button><button class="secondary" id="accountsBtn">刷新账号</button></div><div id="accounts"></div><p class="muted">账号会话保存在服务器数据卷。自动登录不成功时，可在独立认证页面继续完成验证码或短信验证。</p></section>
   <section><h2>签到设置</h2><div class="row"><label>最短错峰秒数 <input id="minDelay" type="number" min="0" max="60" value="0"></label><label>最长错峰秒数 <input id="maxDelay" type="number" min="0" max="60" value="1"></label><label><input id="autoNumber" type="checkbox">自动提取数字签到码</label></div><div class="row"><label>雷达策略 <select id="radarScheme"><option value="trilateration">三点定位</option><option value="empty">空答案提交</option></select></label></div><textarea id="probePoints" rows="3" placeholder="每行一个探测点：纬度,经度；至少三行"></textarea><div><button class="secondary" id="saveSettings">保存设置</button></div></section>
-  <section><h2>二维码签到</h2><video id="video" playsinline webkit-playsinline muted></video><div class="row"><button id="scanBtn">摄像头扫码</button><button class="secondary" id="stopScanBtn" disabled>停止扫描</button><button class="secondary" id="imageBtn">选择二维码图片</button><input id="qrImage" type="file" accept="image/*" class="hidden"><input id="qr" placeholder="也可粘贴二维码原文"><button id="signBtn">对启用账号签到</button></div><p id="scanHint" class="muted">可用摄像头实时扫码或选择二维码图片；摄像头需要 HTTPS。若浏览器无法调用相机，也可粘贴二维码原文。</p><pre id="scanResult"></pre></section>
+  <section><h2>二维码签到</h2><div class="camera-preview"><video id="video" playsinline webkit-playsinline muted></video><div id="scanGuide" class="scan-guide hidden" aria-hidden="true"></div></div><div id="zoomControls" class="zoom-row hidden"><label for="zoomSlider">缩放</label><input id="zoomSlider" type="range" min="1" max="3" step="0.1" value="1"><output id="zoomValue" class="zoom-value" for="zoomSlider">1.0x</output></div><div class="row"><button id="scanBtn">摄像头扫码</button><button class="secondary" id="stopScanBtn" disabled>停止扫描</button><button class="secondary" id="imageBtn">选择二维码图片</button><input id="qrImage" type="file" accept="image/*" class="hidden"><input id="qr" placeholder="也可粘贴二维码原文"><button id="signBtn">对启用账号签到</button></div><p id="scanHint" class="muted">可用摄像头实时扫码或选择二维码图片；摄像头需要 HTTPS。若浏览器无法调用相机，也可粘贴二维码原文。</p><pre id="scanResult"></pre></section>
   <section><h2>点名列表</h2><button id="rollcallsBtn">立即刷新</button><span id="lastRefresh" class="muted"></span><div id="rollcalls"></div></section>
 </main>
 <script>
-const $=id=>document.getElementById(id); let loggedIn=false,stream=null,scanActive=false,scanFrameHandle=null,qrDecoderPromise=null;
+const $=id=>document.getElementById(id); let loggedIn=false,stream=null,scanActive=false,scanFrameHandle=null,qrDecoderPromise=null,cameraTrack=null,hardwareZoom=false,digitalZoom=1,zoomApplyTimer=null;
 const scanCanvas=document.createElement('canvas'),scanContext=scanCanvas.getContext('2d',{willReadFrequently:true});
 function loadQrDecoder(){if(typeof window.jsQR==='function')return Promise.resolve(window.jsQR);if(qrDecoderPromise)return qrDecoderPromise;qrDecoderPromise=new Promise((resolve,reject)=>{const urls=['https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js','https://unpkg.com/jsqr@1.4.0/dist/jsQR.js'];let index=0;const next=()=>{if(index>=urls.length){qrDecoderPromise=null;reject(Error('二维码识别库加载失败，请检查网络后重试，或粘贴二维码原文'));return}const script=document.createElement('script');script.src=urls[index++];script.async=true;script.onload=()=>typeof window.jsQR==='function'?resolve(window.jsQR):next();script.onerror=next;document.head.appendChild(script)};next()});return qrDecoderPromise}
-async function getCameraStream(){const constraints={video:{facingMode:{ideal:'environment'}},audio:false};if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){try{return await navigator.mediaDevices.getUserMedia(constraints)}catch(e){if(e.name!=='OverconstrainedError'&&e.name!=='ConstraintNotSatisfiedError'&&e.name!=='TypeError')throw e;return await navigator.mediaDevices.getUserMedia({video:true,audio:false})}}const legacy=navigator.getUserMedia||navigator.webkitGetUserMedia||navigator.mozGetUserMedia;if(legacy)return new Promise((resolve,reject)=>legacy.call(navigator,{video:true,audio:false},resolve,reject));throw Error('浏览器没有可用的摄像头接口；请使用 HTTPS 页面或选择二维码图片/粘贴内容')}
-function stopCameraScan(){scanActive=false;if(scanFrameHandle!==null){if(window.cancelAnimationFrame)cancelAnimationFrame(scanFrameHandle);else clearTimeout(scanFrameHandle);scanFrameHandle=null}if(stream){stream.getTracks().forEach(track=>track.stop());stream=null}const video=$('video');if(video){video.pause();video.srcObject=null}if($('scanBtn'))$('scanBtn').disabled=false;if($('stopScanBtn'))$('stopScanBtn').disabled=true}
-function scheduleScanFrame(callback){return window.requestAnimationFrame?requestAnimationFrame(callback):setTimeout(callback,100)}
+async function getCameraStream(){const constraints={video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false};if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){try{return await navigator.mediaDevices.getUserMedia(constraints)}catch(e){if(e.name!=='OverconstrainedError'&&e.name!=='ConstraintNotSatisfiedError'&&e.name!=='TypeError')throw e;return await navigator.mediaDevices.getUserMedia({video:true,audio:false})}}const legacy=navigator.getUserMedia||navigator.webkitGetUserMedia||navigator.mozGetUserMedia;if(legacy)return new Promise((resolve,reject)=>legacy.call(navigator,{video:true,audio:false},resolve,reject));throw Error('浏览器没有可用的摄像头接口；请使用 HTTPS 页面或选择二维码图片/粘贴内容')}
+function applyTrackConstraint(track,constraint){
+  const current=typeof track.getConstraints==='function'?track.getConstraints():{};
+  const keys=Object.keys(constraint);
+  const advanced=Array.isArray(current.advanced)?current.advanced.filter(item=>!keys.some(key=>key in item)):[];
+  return track.applyConstraints({...current,advanced:[...advanced,constraint]});
+}
+function updateScanGuideSize(){
+  const preview=$('video').parentElement;
+  const size=Math.max(0,Math.min(preview.clientWidth*.68,preview.clientHeight*.8,280));
+  $('scanGuide').style.width=`${size}px`;
+}
+function updateZoomLabel(value){$('zoomValue').textContent=`${Number(value).toFixed(1)}x`}
+function configureDigitalZoom(){
+  hardwareZoom=false;
+  digitalZoom=1;
+  const slider=$('zoomSlider');
+  slider.min='1';
+  slider.max='3';
+  slider.step='0.1';
+  slider.value='1';
+  $('video').style.transform='';
+}
+function setDigitalZoom(value){
+  configureDigitalZoom();
+  const slider=$('zoomSlider');
+  slider.value=String(Math.max(1,Math.min(3,Number(value)||1)));
+  digitalZoom=Number(slider.value);
+  $('video').style.transform=`scale(${digitalZoom})`;
+  updateZoomLabel(digitalZoom);
+}
+async function configureCameraControls(track){
+  cameraTrack=track||null;
+  let capabilities={};
+  try{if(typeof track?.getCapabilities==='function')capabilities=track.getCapabilities()||{}}catch(e){}
+  if(Array.isArray(capabilities.focusMode)&&capabilities.focusMode.includes('continuous')&&typeof track?.applyConstraints==='function'){
+    try{await applyTrackConstraint(track,{focusMode:'continuous'})}catch(e){}
+  }
+  const range=capabilities.zoom;
+  hardwareZoom=Boolean(range&&Number.isFinite(range.min)&&Number.isFinite(range.max)&&range.max>range.min&&typeof track?.applyConstraints==='function');
+  const slider=$('zoomSlider');
+  if(hardwareZoom){
+    slider.min=String(range.min);
+    slider.max=String(range.max);
+    slider.step=Number.isFinite(range.step)&&range.step>0?String(range.step):'0.1';
+    let settings={};
+    try{if(typeof track.getSettings==='function')settings=track.getSettings()||{}}catch(e){}
+    slider.value=String(Number.isFinite(settings.zoom)?settings.zoom:range.min);
+    digitalZoom=1;
+    $('video').style.transform='';
+  }else configureDigitalZoom();
+  updateZoomLabel(slider.value);
+  $('zoomControls').classList.remove('hidden');
+  $('scanGuide').classList.remove('hidden');
+  updateScanGuideSize();
+}
+function applyScanZoom(){
+  const value=Number($('zoomSlider').value);
+  updateZoomLabel(value);
+  if(!hardwareZoom){
+    digitalZoom=value;
+    $('video').style.transform=`scale(${digitalZoom})`;
+    return;
+  }
+  $('video').style.transform='';
+  if(zoomApplyTimer!==null)clearTimeout(zoomApplyTimer);
+  zoomApplyTimer=setTimeout(()=>{
+    zoomApplyTimer=null;
+    if(!scanActive||!cameraTrack)return;
+    Promise.resolve().then(()=>applyTrackConstraint(cameraTrack,{zoom:value})).catch(async()=>{
+      if(!scanActive||!cameraTrack)return;
+      try{
+        const capabilities=cameraTrack.getCapabilities?.()||{};
+        if(Number.isFinite(capabilities.zoom?.min))await applyTrackConstraint(cameraTrack,{zoom:capabilities.zoom.min});
+      }catch(e){}
+      if(scanActive)setDigitalZoom(value);
+    });
+  },80);
+}
+function resetCameraControls(){
+  if(zoomApplyTimer!==null){clearTimeout(zoomApplyTimer);zoomApplyTimer=null}
+  cameraTrack=null;
+  hardwareZoom=false;
+  digitalZoom=1;
+  $('video').style.transform='';
+  $('zoomControls').classList.add('hidden');
+  $('scanGuide').classList.add('hidden');
+  $('scanGuide').style.width='';
+  $('zoomSlider').min='1';
+  $('zoomSlider').max='3';
+  $('zoomSlider').step='0.1';
+  $('zoomSlider').value='1';
+  updateZoomLabel(1);
+}
+function stopCameraScan(){scanActive=false;if(scanFrameHandle!==null){clearTimeout(scanFrameHandle);scanFrameHandle=null}resetCameraControls();if(stream){stream.getTracks().forEach(track=>track.stop());stream=null}const video=$('video');if(video){video.pause();video.srcObject=null}if($('scanBtn'))$('scanBtn').disabled=false;if($('stopScanBtn'))$('stopScanBtn').disabled=true}
+function scheduleScanFrame(callback){return setTimeout(callback,100)}
 async function submitQr(){const raw=$('qr').value.trim();if(!raw)return alert('先扫码或粘贴二维码内容');try{const x=await api('/api/sign/qr',{method:'POST',body:JSON.stringify({raw})});renderResults(x,$('scanResult'));loadRollcalls()}catch(e){alert(e.message)}}
 async function api(path,options={}){const r=await fetch(path,{...options,credentials:'same-origin',headers:{'Content-Type':'application/json',...(options.headers||{})}});const data=await r.json().catch(()=>({message:'服务器响应无法解析'}));if(r.status===401){loggedIn=false;$('auth').classList.remove('hidden');$('app').classList.add('hidden');throw Error(data.message||'会话已失效')}if(!r.ok&&data.message)throw Error(data.message);return data}
 async function loadSettings(){try{const s=await api('/api/settings');$('minDelay').value=s.min_delay_seconds;$('maxDelay').value=s.max_delay_seconds;$('autoNumber').checked=s.auto_number;$('radarScheme').value=s.radar_scheme;$('probePoints').value=(s.probes||[]).map(p=>`${p.latitude},${p.longitude}`).join('\n')}catch(e){console.warn(e)}}
@@ -42,8 +135,26 @@ async function numberSign(encoded){const code=$('autoNumber').checked?'':prompt(
 async function radarManual(encoded){const lat=prompt('纬度'),lon=prompt('经度');if(lat===null||lon===null)return;try{const x=await api('/api/sign/radar',{method:'POST',body:JSON.stringify({rollcall_id:decodeURIComponent(encoded),latitude:Number(lat),longitude:Number(lon)})});renderResults(x,$('scanResult'));}catch(e){alert(e.message)}}
 async function radarTriangulate(encoded){const rid=decodeURIComponent(encoded);try{if($('radarScheme').value==='empty'){const x=await api('/api/sign/radar/empty',{method:'POST',body:JSON.stringify({rollcall_id:rid,code:''})});renderResults(x,$('scanResult'));return}const probes=$('probePoints').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean).map(x=>{const [latitude,longitude]=x.split(',').map(Number);return {latitude,longitude}});if(probes.length<3)return alert('请先在签到设置中填写至少三个探测点');const x=await api('/api/sign/radar/triangulate',{method:'POST',body:JSON.stringify({rollcall_id:rid,probes})});renderResults(x,$('scanResult'));}catch(e){alert(e.message)}}
 $('signBtn').onclick=submitQr;
-function scanVideoFrame(decoder){if(!scanActive)return;const video=$('video');if(video.readyState>=2&&video.videoWidth&&video.videoHeight){try{scanCanvas.width=video.videoWidth;scanCanvas.height=video.videoHeight;scanContext.drawImage(video,0,0,scanCanvas.width,scanCanvas.height);const pixels=scanContext.getImageData(0,0,scanCanvas.width,scanCanvas.height);const result=decoder(pixels.data,pixels.width,pixels.height,{inversionAttempts:'attemptBoth'});if(result&&result.data){$('qr').value=result.data;$('scanHint').textContent='二维码已识别，正在提交签到…';stopCameraScan();submitQr();return}}catch(e){console.warn('二维码帧解析失败',e)}}scanFrameHandle=scheduleScanFrame(()=>{scanFrameHandle=null;scanVideoFrame(decoder)})}
-$('scanBtn').onclick=async()=>{if(scanActive||$('scanBtn').disabled)return;$('scanBtn').disabled=true;try{const cameraPromise=getCameraStream().then(value=>{stream=value;return value});const decoderPromise=loadQrDecoder();const results=await Promise.all([cameraPromise,decoderPromise]);stream=results[0];const decoder=results[1];const video=$('video');video.setAttribute('playsinline','');video.setAttribute('webkit-playsinline','');video.muted=true;video.srcObject=stream;await video.play();scanActive=true;$('stopScanBtn').disabled=false;$('scanHint').textContent='正在扫描，请将二维码放入摄像头画面…';scanVideoFrame(decoder)}catch(e){stopCameraScan();$('scanHint').textContent='无法启动扫码：'+e.message}};
+$('zoomSlider').oninput=applyScanZoom;
+window.addEventListener('resize',updateScanGuideSize);
+function scanVideoFrame(decoder){
+  if(!scanActive)return;
+  const video=$('video');
+  if(video.readyState>=2&&video.videoWidth&&video.videoHeight){
+    try{
+      const zoom=hardwareZoom?1:digitalZoom;
+      const sourceWidth=video.videoWidth/zoom,sourceHeight=video.videoHeight/zoom;
+      const sourceX=(video.videoWidth-sourceWidth)/2,sourceY=(video.videoHeight-sourceHeight)/2;
+      if(scanCanvas.width!==video.videoWidth||scanCanvas.height!==video.videoHeight){scanCanvas.width=video.videoWidth;scanCanvas.height=video.videoHeight}
+      scanContext.drawImage(video,sourceX,sourceY,sourceWidth,sourceHeight,0,0,scanCanvas.width,scanCanvas.height);
+      const pixels=scanContext.getImageData(0,0,scanCanvas.width,scanCanvas.height);
+      const result=decoder(pixels.data,pixels.width,pixels.height,{inversionAttempts:'attemptBoth'});
+      if(result&&result.data){$('qr').value=result.data;$('scanHint').textContent='二维码已识别，正在提交签到…';stopCameraScan();submitQr();return}
+    }catch(e){console.warn('二维码帧解析失败',e)}
+  }
+  scanFrameHandle=scheduleScanFrame(()=>{scanFrameHandle=null;scanVideoFrame(decoder)});
+}
+$('scanBtn').onclick=async()=>{if(scanActive||$('scanBtn').disabled)return;$('scanBtn').disabled=true;try{const cameraPromise=getCameraStream().then(value=>{stream=value;return value});const decoderPromise=loadQrDecoder();const results=await Promise.all([cameraPromise,decoderPromise]);stream=results[0];const decoder=results[1];const video=$('video');video.setAttribute('playsinline','');video.setAttribute('webkit-playsinline','');video.muted=true;video.srcObject=stream;await video.play();scanActive=true;await configureCameraControls(stream.getVideoTracks()[0]);$('stopScanBtn').disabled=false;$('scanHint').textContent='正在扫描，请将二维码放入取景框内…';scanVideoFrame(decoder)}catch(e){stopCameraScan();$('scanHint').textContent='无法启动扫码：'+e.message}};
 $('stopScanBtn').onclick=()=>{stopCameraScan();$('scanHint').textContent='已停止摄像头扫码。'};
 $('imageBtn').onclick=()=>$('qrImage').click();
 $('qrImage').onchange=async event=>{const file=event.target.files&&event.target.files[0];if(!file)return;stopCameraScan();let imageUrl='';try{const decoder=await loadQrDecoder();imageUrl=URL.createObjectURL(file);const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(Error('无法读取所选图片'));image.src=imageUrl});const scale=Math.min(1,2000/Math.max(image.naturalWidth,image.naturalHeight));scanCanvas.width=Math.max(1,Math.round(image.naturalWidth*scale));scanCanvas.height=Math.max(1,Math.round(image.naturalHeight*scale));scanContext.drawImage(image,0,0,scanCanvas.width,scanCanvas.height);const pixels=scanContext.getImageData(0,0,scanCanvas.width,scanCanvas.height);const result=decoder(pixels.data,pixels.width,pixels.height,{inversionAttempts:'attemptBoth'});if(!result||!result.data)throw Error('图片中没有识别到二维码');$('qr').value=result.data;$('scanHint').textContent='二维码图片已识别，正在提交签到…';await submitQr()}catch(e){$('scanHint').textContent='图片扫码失败：'+e.message}finally{if(imageUrl)URL.revokeObjectURL(imageUrl);event.target.value=''}};
