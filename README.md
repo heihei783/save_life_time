@@ -7,6 +7,7 @@
 - 单用户管理口令保护
 - 重邮 CAS 账号密码登录、会话持久化和 CAS 会话刷新
 - 多账号保存与批量操作
+- 账号会话状态：网页端显示每个账号「正常 / 已过期」；重新登录同一学号会更新原账号而不是重复添加
 - 点名列表
 - 手机浏览器摄像头二维码签到，也支持粘贴二维码原文
 - 数字签到
@@ -16,7 +17,7 @@
 ## 技术栈
 
 - Rust：Axum Web API + 原有 reqwest/CAS/二维码/签到核心
-- 浏览器：原生 HTML/JavaScript、jsQR 摄像头逐帧扫码、二维码图片识别与原文粘贴备用；jsQR 首次使用时从 jsDelivr 加载，失败时尝试 unpkg
+- 浏览器：原生 HTML/JavaScript、jsQR 摄像头逐帧扫码、对比度增强/局部裁剪放大、二维码图片识别与原文粘贴备用
 - 部署：Docker Compose，`/data` 持久化账号会话
 
 摄像头扫码需要 HTTPS（或 localhost）及浏览器摄像头权限。此实现不再依赖 `BarcodeDetector`，适用于支持 `getUserMedia` 的现代 QQ 浏览器等；具体版本仍受浏览器和系统相机权限限制。二维码图片在浏览器本地解码，不会上传到 CDN；CDN 仅用于下载识别库。
@@ -32,6 +33,8 @@ rust/src/bin/server.rs   Linux HTTP 服务端
 web/index.html           浏览器界面
 Dockerfile               多阶段镜像构建
 docker-compose.yml       服务器部署配置
+deploy.ps1               一键部署（Windows：上传 + 远程执行）
+deploy.sh                服务器端部署逻辑（构建、入网、重载 nginx）
 DOCKER.md                部署和安全说明
 ```
 
@@ -47,6 +50,8 @@ docker compose up -d --build
 ```
 
 主站 `sign.xiaohundun.cc` 经 HTTPS 反向代理转发到本机 `127.0.0.1:1112`；认证页 `cqupt.xiaohundun.cc` 转发到 `127.0.0.1:1113`。生产环境摄像头及 Secure Cookie 都要求 HTTPS。
+
+Windows 开发机也可以直接执行 `.\deploy.ps1`：自动打包上传、构建并启动容器、接入 nginx 共享网络、重载 nginx，并在失败时回滚，详见 [DOCKER.md](DOCKER.md)。
 
 健康检查地址：`/health`。
 

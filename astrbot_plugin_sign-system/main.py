@@ -13,7 +13,7 @@ from astrbot.api.star import Context, Star, register
 logger = logging.getLogger("astrbot")
 
 
-@register("astrbot_signin_monitor", "personal", "Monitor winSignIn rollcalls", "1.4.0")
+@register("astrbot_signin_monitor", "personal", "Monitor winSignIn rollcalls", "1.5.1")
 class SigninMonitor(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -23,6 +23,7 @@ class SigninMonitor(Star):
         self._has_snapshot = False
         self._pending_notices = []
         self._target_umo = None
+        self._account_health = {}
 
     async def initialize(self):
         """AstrBot plugin lifecycle entry point."""
@@ -58,15 +59,19 @@ class SigninMonitor(Star):
             return
 
         try:
-            rollcalls, snapshot_complete = await asyncio.to_thread(self._fetch_rollcalls)
+            rollcalls, snapshot_complete, account_health = await asyncio.to_thread(self._fetch_rollcalls)
             active = [item for item in rollcalls if not self._is_expired(item)]
             account_count = sum(len(self._account_map(item)) for item in rollcalls)
+            unhealthy = [
+                account for account in account_health
+                if isinstance(account, dict) and account.get("state") in {"expired", "failed"}
+            ]
             if snapshot_complete is True:
                 completeness = "完整"
             elif snapshot_complete is False:
-                completeness = "不完整（请检查 winSignIn 服务和账号会话）"
+                completeness = "不完整；已继续处理可用数据"
             else:
-                completeness = "服务端未提供完整性标记（请更新 winSignIn 服务端）"
+                completeness = "服务端未提供完整性标记；已继续处理可用数据"
             result = (
                 "🏓 签到监听插件在线\n"
                 "winSignIn API：连接成功\n"
@@ -74,6 +79,10 @@ class SigninMonitor(Star):
                 f"本系统账号状态记录：{account_count} 条\n"
                 f"点名快照：{completeness}"
             )
+            if unhealthy:
+                expired = sum(account.get("state") == "expired" for account in unhealthy)
+                failed = len(unhealthy) - expired
+                result += f"\n异常账号：登录过期 {expired} 个，查询失败 {failed} 个"
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
                 reason = f"winSignIn API 鉴权失败（HTTP {exc.code}），请检查固定 API token"
@@ -108,14 +117,35 @@ class SigninMonitor(Star):
         token = str(self._get("api_token", "WINSIGNIN_API_TOKEN")).strip()
         if not token:
             raise RuntimeError("请配置固定的 winSignIn API token（需与服务端 WINSIGNIN_API_TOKEN 一致）")
-        request = urllib.request.Request(base + "/api/rollcalls", headers={"Authorization": "Bearer " + token})
+        request = urllib.request.Request(
+            base + "/api/rollcalls?monitor=1",
+            headers={"Authorization": "Bearer " + token},
+        )
         with urllib.request.urlopen(request, timeout=15) as response:
             data = json.loads(response.read().decode("utf-8"))
             complete_header = response.headers.get("X-Rollcalls-Complete")
             snapshot_complete = None if complete_header is None else complete_header.lower() == "true"
-        if not isinstance(data, list):
-            raise RuntimeError("winSignIn 返回格式异常")
-        return data, snapshot_complete
+        if isinstance(data, dict):
+            rollcalls = data.get("rollcalls")
+            account_health = data.get("account_health")
+            if not isinstance(rollcalls, list):
+                raise RuntimeError("winSignIn 返回格式异常")
+            if not isinstance(account_health, list):
+                account_health = []
+            if "complete" in data:
+                complete_value = data["complete"]
+                if isinstance(complete_value, bool):
+                    snapshot_complete = complete_value
+                elif str(complete_value).strip().lower() in {"1", "true", "yes"}:
+                    snapshot_complete = True
+                elif str(complete_value).strip().lower() in {"0", "false", "no"}:
+                    snapshot_complete = False
+                else:
+                    snapshot_complete = None
+            return rollcalls, snapshot_complete, account_health
+        if isinstance(data, list):
+            return data, snapshot_complete, []
+        raise RuntimeError("winSignIn 返回格式异常")
 
     def _started_notice(self, item):
         course = item.get("course_title") or "课程未知"
@@ -144,16 +174,24 @@ class SigninMonitor(Star):
             interval = 20
         while True:
             try:
-                rollcalls, snapshot_complete = await asyncio.to_thread(self._fetch_rollcalls)
-                if not snapshot_complete:
-                    logger.warning("winSignIn 点名快照不完整，本轮不更新状态以避免误报结束")
+                notices = []
+                try:
+                    rollcalls, snapshot_complete, account_health = await asyncio.to_thread(self._fetch_rollcalls)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    # API availability is intentionally visible through /ping only.
+                    logger.debug("签到监听读取 winSignIn 失败：%s", exc)
                     await asyncio.sleep(interval)
                     continue
-                current = {str(item.get("id")): item for item in rollcalls if item.get("id")}
-                notices = []
+
+                notices.extend(self._account_health_notices(account_health))
+                current = {
+                    str(item.get("id")): item
+                    for item in rollcalls
+                    if isinstance(item, dict) and item.get("id")
+                }
                 if not self._has_snapshot:
-                    # On startup, report currently active calls so a plugin restart does
-                    # not silently miss a teacher's already-started rollcall.
                     for item in current.values():
                         if not self._is_expired(item):
                             notices.append(self._started_notice(item))
@@ -177,29 +215,68 @@ class SigninMonitor(Star):
                                 f"🔔 签到状态更新：{course} / {title}\n"
                                 + "\n".join(changes)
                             )
-                    # Some LMS responses omit completed calls instead of returning an
-                    # explicit is_expired=true record. Only infer end from disappearance
-                    # after the server confirms every enabled account was queried.
+
                     if snapshot_complete is True:
+                        # Only a confirmed complete snapshot can infer an end from a missing record.
                         for rid, old in self._seen.items():
                             if rid not in current and not self._is_expired(old):
                                 notices.append(self._ended_notice(old))
-                    self._seen = current
-                self._pending_notices.extend(notices)
-                still_pending = []
-                for text in self._pending_notices:
-                    try:
-                        if not await self._notify(text):
-                            still_pending.append(text)
-                    except Exception:
-                        still_pending.append(text)
-                        raise
-                self._pending_notices = still_pending
+                        self._seen = current
+                    else:
+                        # Preserve omitted calls and account statuses from failed accounts.
+                        for rid, item in current.items():
+                            old = self._seen.get(rid)
+                            if old is None:
+                                self._seen[rid] = item
+                                continue
+                            merged = dict(old)
+                            merged.update(item)
+                            old_accounts = self._account_map(old)
+                            new_accounts = self._account_map(item)
+                            if old_accounts or new_accounts:
+                                old_accounts.update(new_accounts)
+                                merged["accounts"] = list(old_accounts.values())
+                            self._seen[rid] = merged
+
+                await self._deliver_notices(notices)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.warning("签到监听失败：%s", exc)
+                logger.warning("签到监听处理失败：%s", exc)
             await asyncio.sleep(interval)
+
+    def _account_health_notices(self, records):
+        if not isinstance(records, list):
+            return []
+        current = {}
+        notices = []
+        for item in records:
+            if not isinstance(item, dict) or not item.get("account_id"):
+                continue
+            account_id = str(item["account_id"])
+            state = str(item.get("state") or "failed")
+            current[account_id] = {
+                "name": item.get("name") or "未命名账号",
+                "state": state,
+                "message": item.get("message") or "",
+            }
+            previous = self._account_health.get(account_id)
+            if state == "expired" and (not previous or previous.get("state") != "expired"):
+                notices.append(f"🔐 winSignIn 账号登录已过期：{current[account_id]['name']}\n请重新登录该账号，恢复点名状态获取。")
+        self._account_health = current
+        return notices
+
+    async def _deliver_notices(self, notices):
+        self._pending_notices.extend(notices)
+        remaining = []
+        for text in self._pending_notices:
+            try:
+                if not await self._notify(text):
+                    remaining.append(text)
+            except Exception as exc:
+                logger.warning("签到通知发送失败，将重试：%s", exc)
+                remaining.append(text)
+        self._pending_notices = remaining
 
     @staticmethod
     def _is_expired(item):

@@ -61,7 +61,7 @@ pub async fn acquire_cookie(
     let first = session.walk(&entry).await?;
     check_re_auth(&first.url)?;
     if first.url.host_str() == Some(HOME_HOST) {
-        return Ok((session.lms_cookie(), session.blob()));
+        return Ok((session.lms_cookie(), session.blob(cas_cookie)));
     }
     if first.url.path().contains("/improveInfo/") {
         return Err(IMPROVE_INFO_TIP.to_string());
@@ -138,7 +138,7 @@ pub async fn acquire_cookie(
         }
         return Err(format!("登录失败：CAS 链没有回到 {HOME_HOST}"));
     }
-    Ok((session.lms_cookie(), session.blob()))
+    Ok((session.lms_cookie(), session.blob(cas_cookie)))
 }
 
 /// 用已保存的 CAS cookie 静默刷新会话（免密）。CASTGC 还有效就成功。
@@ -147,7 +147,7 @@ pub async fn refresh(cas_cookie: &str) -> Result<(String, String), String> {
     let entry = format!("{CAS_LOGIN_ENDPOINT}?service={}", urlencode(HOME));
     let first = session.walk(&entry).await?;
     if first.url.host_str() == Some(HOME_HOST) {
-        Ok((session.lms_cookie(), session.blob()))
+        Ok((session.lms_cookie(), session.blob(cas_cookie)))
     } else {
         Err("统一认证会话已过期，请重新输入密码登录".to_string())
     }
@@ -202,7 +202,7 @@ pub async fn browser_forward(id: &str, host: &str, path: &str, query: Option<&st
     }
     let bytes=resp.bytes().await.map_err(|e|format!("读取认证响应失败：{e}"))?.to_vec(); if bytes.len()>10*1024*1024 { return Err("学校认证响应超过大小限制".to_string()); }
     if host==HOME_HOST && path.starts_with("/user/index") && !guard.session.lms_cookie().is_empty() {
-        BROWSER_DONE.get_or_init(Default::default).lock().map_err(|_|"登录状态锁失败".to_string())?.insert(id.to_string(), BrowserComplete { cookie:guard.session.lms_cookie(), cas_cookie:guard.session.blob() });
+        BROWSER_DONE.get_or_init(Default::default).lock().map_err(|_|"登录状态锁失败".to_string())?.insert(id.to_string(), BrowserComplete { cookie:guard.session.lms_cookie(), cas_cookie:guard.session.blob("") });
     }
     let location=location.map(|loc| { let next=url.join(&loc).unwrap_or_else(|_|url.clone()); let h=next.host_str().unwrap_or(""); if browser_host_allowed(h) { format!("/cas/{id}/{h}{}{}",next.path(),next.query().map(|q|format!("?{q}")).unwrap_or_default()) } else { loc } });
     let mut response=BrowserResponse { status,content_type,location,body:bytes };
@@ -385,16 +385,94 @@ impl Session {
     }
 
     /// 抓下来的 CAS cookie 序列化：每行 `url<TAB>Set-Cookie`。
-    fn blob(&self) -> String {
-        let cap = match self.captured.lock() {
+    ///
+    /// 与上次保存的 [previous] 合并。CAS 只在登录时下发一次 `CASTGC`（14 天有效），
+    /// 刷新会话时通常不会再发；如果直接返回本次抓到的内容，刷新一次后 TGT 就丢了，
+    /// 下次刷新只能落回登录页——表现出来就是"刷新账号只能成功一次，之后全部过期"。
+    fn blob(&self, previous: &str) -> String {
+        let captured = match self.captured.lock() {
             Ok(c) => c,
-            Err(_) => return String::new(),
+            Err(_) => return previous.to_string(),
         };
-        cap.iter()
+        let fresh = captured
+            .iter()
             .map(|(u, c)| format!("{u}\t{c}"))
             .collect::<Vec<_>>()
-            .join("\n")
+            .join("\n");
+        merge_cookie_blob(previous, &fresh)
     }
+}
+
+/// 合并两份 Cookie 串。键是（域名，路径，Cookie 名）：新值覆盖旧值，
+/// 新响应里 `Max-Age=0` 的 Cookie 视为删除。
+fn merge_cookie_blob(previous: &str, fresh: &str) -> String {
+    let mut merged: Vec<((String, String, String), String, String)> = Vec::new();
+    for line in previous.lines() {
+        let Some((url, cookie)) = line.split_once('\t') else {
+            continue;
+        };
+        let Some(key) = cookie_key(url, cookie) else {
+            continue;
+        };
+        match merged.iter_mut().find(|(k, _, _)| *k == key) {
+            Some(slot) => {
+                slot.1 = url.to_string();
+                slot.2 = cookie.to_string();
+            }
+            None => merged.push((key, url.to_string(), cookie.to_string())),
+        }
+    }
+    for line in fresh.lines() {
+        let Some((url, cookie)) = line.split_once('\t') else {
+            continue;
+        };
+        let Some(key) = cookie_key(url, cookie) else {
+            continue;
+        };
+        let removed = cookie_deletes(cookie);
+        match merged.iter().position(|(k, _, _)| *k == key) {
+            Some(index) if removed => {
+                merged.remove(index);
+            }
+            Some(index) => {
+                merged[index].1 = url.to_string();
+                merged[index].2 = cookie.to_string();
+            }
+            None if !removed => merged.push((key, url.to_string(), cookie.to_string())),
+            None => {}
+        }
+    }
+    merged
+        .into_iter()
+        .map(|(_, url, cookie)| format!("{url}\t{cookie}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn cookie_key(url: &str, set_cookie: &str) -> Option<(String, String, String)> {
+    let host = Url::parse(url).ok()?.host_str()?.to_string();
+    let mut parts = set_cookie.split(';');
+    let name = parts.next()?.split('=').next()?.trim().to_string();
+    if name.is_empty() {
+        return None;
+    }
+    let path = parts
+        .filter_map(|attr| {
+            let (key, value) = attr.split_once('=')?;
+            key.trim()
+                .eq_ignore_ascii_case("path")
+                .then(|| value.trim().to_string())
+        })
+        .next()
+        .unwrap_or_else(|| "/".to_string());
+    Some((host, path, name))
+}
+
+fn cookie_deletes(set_cookie: &str) -> bool {
+    set_cookie.split(';').any(|attr| match attr.split_once('=') {
+        Some((key, value)) => key.trim().eq_ignore_ascii_case("max-age") && value.trim() == "0",
+        None => false,
+    })
 }
 
 fn parse_cookie_blob(blob: &str) -> Vec<(String, String)> {
@@ -543,5 +621,36 @@ mod tests {
         assert_eq!(parsed.len(), 2);
         assert_eq!(parsed[0].0, "https://ids.cqupt.edu.cn/authserver/login");
         assert!(parsed[0].1.starts_with("CASTGC=TGT-1"));
+    }
+
+    /// 刷新时 CAS 不再下发 CASTGC；旧的必须保留，否则下次刷新必然失败。
+    #[test]
+    fn keeps_previous_cookie_when_refresh_does_not_resend_it() {
+        let previous = "https://ids.cqupt.edu.cn/authserver/login\tCASTGC=TGT-1; Path=/authserver\n\
+                        http://lms.tc.cqupt.edu.cn/\tsession=old; Path=/";
+        let fresh = "http://lms.tc.cqupt.edu.cn/\tsession=new; Path=/\n\
+                     http://lms.tc.cqupt.edu.cn/\trole_token=r1; Path=/";
+        let merged = merge_cookie_blob(previous, fresh);
+        assert!(merged.contains("CASTGC=TGT-1"), "旧 CASTGC 丢失：{merged}");
+        assert!(merged.contains("session=new"));
+        assert!(!merged.contains("session=old"));
+        assert!(merged.contains("role_token=r1"));
+    }
+
+    #[test]
+    fn new_cookie_overrides_same_name_and_path() {
+        let previous = "https://ids.cqupt.edu.cn/\tCASTGC=TGT-old; Path=/";
+        let fresh = "https://ids.cqupt.edu.cn/\tCASTGC=TGT-new; Path=/";
+        assert_eq!(
+            merge_cookie_blob(previous, fresh),
+            "https://ids.cqupt.edu.cn/\tCASTGC=TGT-new; Path=/"
+        );
+    }
+
+    #[test]
+    fn max_age_zero_removes_cookie() {
+        let previous = "https://ids.cqupt.edu.cn/\tCASTGC=TGT-1; Path=/";
+        let fresh = "https://ids.cqupt.edu.cn/\tCASTGC=; Path=/; Max-Age=0";
+        assert_eq!(merge_cookie_blob(previous, fresh), "");
     }
 }

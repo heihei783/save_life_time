@@ -305,7 +305,8 @@ pub fn solve_radar_target(points: Vec<GeoPoint>, distances: Vec<f64>) -> RadarTa
 /// 取当前账号的点名列表。
 pub fn get_rollcalls(cookie: String) -> RollcallsResult {
     let url = format!("{API_BASE}/api/radar/rollcalls?api_version=1.1.0");
-    let req = authed(reqwest::Client::new().get(&url), &cookie);
+    let req = authed(reqwest::Client::new().get(&url), &cookie)
+        .timeout(std::time::Duration::from_secs(10));
     match runtime().block_on(send(req)) {
         Ok((code, text)) => parse_rollcalls(code, &text),
         Err(e) => RollcallsResult {
@@ -406,23 +407,29 @@ fn parse_account(code: u16, text: &str) -> AccountInfo {
 }
 
 fn parse_rollcalls(code: u16, text: &str) -> RollcallsResult {
-    if code == 401 || code == 403 {
-        return RollcallsResult {
-            ok: false,
-            message: "登录已过期，请重新登录".to_string(),
-            rollcalls: Vec::new(),
-        };
+    let failed = |message: String| RollcallsResult {
+        ok: false,
+        message,
+        rollcalls: Vec::new(),
+    };
+    if !(200..300).contains(&code) {
+        return failed(if code == 401 || code == 403 {
+            "登录已过期，请重新登录".to_string()
+        } else {
+            format!("获取点名列表失败（HTTP {code}）")
+        });
     }
-    let value = parse_json(text);
-    let rollcalls = value
-        .get("rollcalls")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().map(parse_rollcall).collect())
-        .unwrap_or_default();
+    let value: serde_json::Value = match serde_json::from_str(text) {
+        Ok(value) => value,
+        Err(_) => return failed("点名列表响应不是有效 JSON".to_string()),
+    };
+    let Some(arr) = value.get("rollcalls").and_then(|v| v.as_array()) else {
+        return failed("点名列表响应缺少有效 rollcalls 数组".to_string());
+    };
     RollcallsResult {
         ok: true,
         message: String::new(),
-        rollcalls,
+        rollcalls: arr.iter().map(parse_rollcall).collect(),
     }
 }
 
@@ -525,6 +532,44 @@ mod tests {
     const OUT_OF_SCOPE: &str = r#"{"distance":598990.2518034368,
         "error_code":"radar_out_of_rollcall_scope","id":null,
         "message":"out of rollcall scope","status_name":"on_call_fine"}"#;
+
+    #[test]
+    fn rollcalls_parse_valid_snapshot_and_allow_empty_array() {
+        let parsed = parse_rollcalls(200, r#"{"rollcalls":[{"rollcall_id":42,"course_title":"Math","title":"Quiz","is_number":true,"status":"on_call_fine"}]}"#);
+        assert!(parsed.ok);
+        assert_eq!(parsed.rollcalls.len(), 1);
+        assert_eq!(parsed.rollcalls[0].id, "42");
+        assert_eq!(parsed.rollcalls[0].course_title, "Math");
+        assert!(parsed.rollcalls[0].is_number);
+        assert_eq!(parsed.rollcalls[0].status, "on_call_fine");
+
+        let empty = parse_rollcalls(200, r#"{"rollcalls":[]}"#);
+        assert!(empty.ok);
+        assert!(empty.rollcalls.is_empty());
+    }
+
+    #[test]
+    fn rollcalls_reject_non_success_http_status_even_with_valid_body() {
+        let parsed = parse_rollcalls(503, r#"{"rollcalls":[]}"#);
+        assert!(!parsed.ok);
+        assert!(parsed.rollcalls.is_empty());
+        assert!(parsed.message.contains("503"));
+
+        let expired = parse_rollcalls(401, r#"{"rollcalls":[]}"#);
+        assert!(!expired.ok);
+        assert!(expired.message.contains("登录已过期"));
+    }
+
+    #[test]
+    fn rollcalls_reject_invalid_json_or_missing_array() {
+        for body in ["not json", r#"{"data":[]}"#, r#"{"rollcalls":null}"#] {
+            let parsed = parse_rollcalls(200, body);
+            assert!(!parsed.ok, "body should fail: {body}");
+            assert!(parsed.rollcalls.is_empty());
+        }
+        assert!(parse_rollcalls(200, "not json").message.contains("JSON"));
+        assert!(parse_rollcalls(200, r#"{"data":[]}"#).message.contains("rollcalls"));
+    }
 
     #[test]
     fn radar_out_of_scope_reads_chinese_distance() {
