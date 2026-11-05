@@ -20,7 +20,30 @@
 const $=id=>document.getElementById(id); let loggedIn=false,stream=null,scanActive=false,scanFrameHandle=null,qrDecoderPromise=null,cameraTrack=null,hardwareZoom=false,digitalZoom=1,zoomApplyTimer=null;
 const scanCanvas=document.createElement('canvas'),scanContext=scanCanvas.getContext('2d',{willReadFrequently:true});
 function loadQrDecoder(){if(typeof window.jsQR==='function')return Promise.resolve(window.jsQR);if(qrDecoderPromise)return qrDecoderPromise;qrDecoderPromise=new Promise((resolve,reject)=>{const urls=['https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js','https://unpkg.com/jsqr@1.4.0/dist/jsQR.js'];let index=0;const next=()=>{if(index>=urls.length){qrDecoderPromise=null;reject(Error('二维码识别库加载失败，请检查网络后重试，或粘贴二维码原文'));return}const script=document.createElement('script');script.src=urls[index++];script.async=true;script.onload=()=>typeof window.jsQR==='function'?resolve(window.jsQR):next();script.onerror=next;document.head.appendChild(script)};next()});return qrDecoderPromise}
-async function getCameraStream(){const constraints={video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false};if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){try{return await navigator.mediaDevices.getUserMedia(constraints)}catch(e){if(e.name!=='OverconstrainedError'&&e.name!=='ConstraintNotSatisfiedError'&&e.name!=='TypeError')throw e;return await navigator.mediaDevices.getUserMedia({video:true,audio:false})}}const legacy=navigator.getUserMedia||navigator.webkitGetUserMedia||navigator.mozGetUserMedia;if(legacy)return new Promise((resolve,reject)=>legacy.call(navigator,{video:true,audio:false},resolve,reject));throw Error('浏览器没有可用的摄像头接口；请使用 HTTPS 页面或选择二维码图片/粘贴内容')}
+async function getCameraStream(){
+  const mediaDevices=navigator.mediaDevices;
+  if(mediaDevices&&mediaDevices.getUserMedia){
+    const video={facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}};
+    let requestZoom=false;
+    try{requestZoom=Boolean(mediaDevices.getSupportedConstraints?.().zoom)}catch(e){}
+    try{return await mediaDevices.getUserMedia({video:requestZoom?{...video,zoom:true}:video,audio:false})}
+    catch(e){
+      const constraintError=['OverconstrainedError','ConstraintNotSatisfiedError','TypeError'].includes(e.name);
+      if(requestZoom&&(e.name==='NotAllowedError'||constraintError)){
+        try{return await mediaDevices.getUserMedia({video,audio:false})}
+        catch(fallback){
+          if(!['OverconstrainedError','ConstraintNotSatisfiedError','TypeError'].includes(fallback.name))throw fallback;
+          return await mediaDevices.getUserMedia({video:true,audio:false});
+        }
+      }
+      if(constraintError)return await mediaDevices.getUserMedia({video:true,audio:false});
+      throw e;
+    }
+  }
+  const legacy=navigator.getUserMedia||navigator.webkitGetUserMedia||navigator.mozGetUserMedia;
+  if(legacy)return new Promise((resolve,reject)=>legacy.call(navigator,{video:true,audio:false},resolve,reject));
+  throw Error('浏览器没有可用的摄像头接口；请使用 HTTPS 页面或选择二维码图片/粘贴内容');
+}
 function applyTrackConstraint(track,constraint){
   const current=typeof track.getConstraints==='function'?track.getConstraints():{};
   const keys=Object.keys(constraint);
