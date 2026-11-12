@@ -6,20 +6,23 @@
   <style>
     :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#172033;background:#f3f5fa}body{max-width:820px;margin:auto;padding:14px}h1{font-size:1.6rem}section{background:white;padding:16px;margin:12px 0;border-radius:14px;box-shadow:0 2px 10px #14244712}input,button{padding:10px;margin:4px;border:1px solid #cbd3e1;border-radius:8px;font:inherit}button{position:relative;cursor:pointer;background:#1a63d8;color:white;border:0;transition:filter .18s,transform .08s,background .18s}button:hover:not(:disabled){filter:brightness(1.07)}button:active:not(:disabled){transform:translateY(1px)}button:focus-visible{outline:3px solid #1a63d855;outline-offset:2px}button:disabled{cursor:not-allowed}button.busy{color:transparent!important;pointer-events:none;cursor:progress}button.busy::after{content:"";position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;border:2px solid #ffffff55;border-top-color:#fff;animation:spin .7s linear infinite}button.secondary.busy::after{border-color:rgba(35,52,6,.3);border-top-color:#234}button.secondary{background:#e9effa;color:#234}button:disabled{opacity:.5}.row{display:flex;flex-wrap:wrap;align-items:center;gap:4px}.row input{min-width:0;flex:1}.muted{color:#64708a;font-size:.9rem}.badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.82rem;font-weight:600}.badge.ok{color:#087c43;background:#e6f5ed}.badge.bad{color:#bd2525;background:#fdeaea}.badge.unknown{color:#64708a;background:#eef1f6}.rollcall{border-top:1px solid #edf0f5;padding:10px 0}.ok{color:#087c43}.bad{color:#bd2525}pre{white-space:pre-wrap;overflow-wrap:anywhere}.hidden{display:none}video{width:100%;max-height:320px;background:#111;border-radius:8px}#progress{position:fixed;top:0;left:0;right:0;height:3px;overflow:hidden;z-index:99;opacity:0;transition:opacity .2s;pointer-events:none}#progress.on{opacity:1}#progress.on::before{content:"";position:absolute;top:0;left:-40%;width:40%;height:100%;background:linear-gradient(90deg,transparent,#1a63d8,#4f9cf7,transparent);animation:barSlide 1s ease-in-out infinite}@keyframes barSlide{to{left:100%}}@keyframes spin{to{transform:rotate(360deg)}}#toasts{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;z-index:100;width:min(92vw,520px);pointer-events:none}.toast{background:#172033;color:#fff;padding:10px 16px;border-radius:10px;box-shadow:0 6px 24px #0003;font-size:.92rem;line-height:1.4;max-width:100%;opacity:0;transform:translateY(10px);transition:opacity .22s,transform .22s}.toast.show{opacity:1;transform:none}.toast.ok{background:#0f7a45}.toast.bad{background:#b32424}@media (prefers-reduced-motion:reduce){button.busy::after,#progress.on::before{animation:none}.toast{transition:none}}
     .camera-preview{position:relative;overflow:hidden;max-height:320px;background:#111;border-radius:8px}.camera-preview video{display:block;width:100%;max-height:320px;object-fit:contain;background:transparent;border-radius:0;transform-origin:center;transition:transform .1s linear}.scan-guide{position:absolute;top:50%;left:50%;width:280px;aspect-ratio:1;transform:translate(-50%,-50%);border:2px solid #fff;border-radius:6px;box-shadow:0 0 0 999px #0006;pointer-events:none}.zoom-row{display:flex;align-items:center;gap:8px}.zoom-row.hidden{display:none}.zoom-row input[type=range]{min-width:120px;flex:1}.zoom-value{min-width:3.5em;text-align:right;font-variant-numeric:tabular-nums}
-  </style>
-</head>
+    .account-row{border-top:1px solid #edf0f5;padding:10px 0}.account-actions button{padding:6px 10px;font-size:.86rem;margin:2px 4px 0 0}.account-actions .muted{font-size:.82rem}.report{border-left:3px solid #1a63d8;background:#f7f9fd;border-radius:8px;padding:8px 12px;margin:8px 0}.report p{margin:4px 0}.sign-summary{margin:2px 0 8px}.sign-row{border:1px solid #e6ebf3;background:#fff;border-radius:8px;padding:8px 10px;margin:6px 0}.sign-row.ok{border-color:#c8e6d6;background:#f7fdf9}.sign-row.bad{border-color:#f0c3c3;background:#fff7f7}.sign-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.sign-head button{margin:0;padding:4px 10px;font-size:.86rem}.sign-detail{font-size:.88rem;margin-top:2px}.sign-detail.bad{color:#bd2525}#loginNotice{margin:6px 0 0}#accountsReport:empty,#accountResult:empty,#scanResult:empty{display:none}
+  </style></head>
 <body>
 <div id="progress"></div><div id="toasts"></div>
 <h1>winSignIn · 网页签到</h1>
-<section id="auth"><h2>私有站点登录</h2><div class="row"><input id="admin" type="password" placeholder="管理员口令"><button id="adminBtn">进入</button></div></section>
+<section id="auth"><h2>私有站点登录</h2><div class="row"><input id="admin" type="password" placeholder="管理员口令"><button id="adminBtn">进入</button></div><p id="loginNotice" class="bad hidden" role="status"></p></section>
 <main id="app" class="hidden">
-  <section><h2>学校账号</h2><div class="row"><input id="user" placeholder="学号/用户名"><input id="pass" type="password" placeholder="密码"><label><input id="remember" type="checkbox" checked>记住 CAS 会话</label><button id="schoolBtn">账号密码快速登录</button><button class="secondary" id="casWebBtn">学校网页认证（验证码/短信）</button></div><div id="casPanel" class="hidden"><p class="muted">在学校认证页面内完成密码、验证码或短信验证。认证域与管理站点分离；完成后此处会自动保存会话。</p><iframe id="casFrame" title="学校统一认证" style="width:100%;height:70vh;border:1px solid #ccd3e1;border-radius:10px"></iframe></div><div class="row"><button class="secondary" id="refreshBtn">刷新登录会话</button><button class="secondary" id="accountsBtn">检测账号状态</button></div><div id="accounts"></div><p class="muted">账号会话保存在服务器数据卷。显示「已过期」的账号请用帐号密码重新登录一次：会更新原账号的会话，不会重复添加。自动登录不成功时，可在独立认证页面继续完成验证码或短信验证。</p></section>
+  <section><h2>学校账号</h2><div class="row"><input id="user" placeholder="学号/用户名"><input id="pass" type="password" placeholder="密码"><label><input id="remember" type="checkbox" checked>记住 CAS 会话</label><button id="schoolBtn">账号密码快速登录</button><button class="secondary" id="casWebBtn">学校网页认证（验证码/短信）</button></div><div id="casPanel" class="hidden"><p class="muted">在学校认证页面内完成密码、验证码或短信验证。认证域与管理站点分离；完成后此处会自动保存会话。</p><iframe id="casFrame" title="学校统一认证" style="width:100%;height:70vh;border:1px solid #ccd3e1;border-radius:10px"></iframe></div><div class="row"><button class="secondary" id="refreshBtn">刷新登录会话</button><button class="secondary" id="accountsBtn">检测账号状态</button></div><div id="accountsReport"></div><div id="accounts"></div><div id="accountResult"></div><p class="muted">账号会话保存在服务器数据卷。显示「已过期」的账号请用帐号密码重新登录一次：会更新原账号的会话，不会重复添加。每个账号后面的「自动数字签到」「位置签到」只对这一个账号提交一次，账号被停用也能手动触发。</p></section>
   <section><h2>签到设置</h2><div class="row"><label>最短错峰秒数 <input id="minDelay" type="number" min="0" max="60" value="0"></label><label>最长错峰秒数 <input id="maxDelay" type="number" min="0" max="60" value="1"></label><label><input id="autoNumber" type="checkbox">自动提取数字签到码</label></div><div class="row"><label>雷达策略 <select id="radarScheme"><option value="trilateration">三点定位</option><option value="empty">空答案提交</option></select></label></div><textarea id="probePoints" rows="3" placeholder="每行一个探测点：纬度,经度；至少三行"></textarea><div><button class="secondary" id="saveSettings">保存设置</button></div></section>
-  <section><h2>二维码签到</h2><div class="camera-preview"><video id="video" playsinline webkit-playsinline muted></video><div id="scanGuide" class="scan-guide hidden" aria-hidden="true"></div></div><div id="zoomControls" class="zoom-row hidden"><label for="zoomSlider">缩放</label><input id="zoomSlider" type="range" min="1" max="3" step="0.1" value="1"><output id="zoomValue" class="zoom-value" for="zoomSlider">1.0x</output></div><div class="row"><button id="scanBtn">摄像头扫码</button><button class="secondary" id="stopScanBtn" disabled>停止扫描</button><button class="secondary" id="imageBtn">选择二维码图片</button><input id="qrImage" type="file" accept="image/*" class="hidden"><input id="qr" placeholder="也可粘贴二维码原文"><button id="signBtn">对启用账号签到</button></div><p id="scanHint" class="muted">安卓手机优先用系统自带识别；其他浏览器自动改用多策略识别（自动降采样、局部二值化、分块扫描），二维码不必居中。可用缩放滑块拉近画面，摄像头需要 HTTPS。也可选择二维码图片或粘贴原文。</p><pre id="scanResult"></pre></section>
-  <section><h2>点名列表</h2><button id="rollcallsBtn">立即刷新</button><span id="lastRefresh" class="muted"></span><div id="rollcalls"></div></section>
+  <section><h2>二维码签到</h2><div class="camera-preview"><video id="video" playsinline webkit-playsinline muted></video><div id="scanGuide" class="scan-guide hidden" aria-hidden="true"></div></div><div id="zoomControls" class="zoom-row hidden"><label for="zoomSlider">缩放</label><input id="zoomSlider" type="range" min="1" max="3" step="0.1" value="1"><output id="zoomValue" class="zoom-value" for="zoomSlider">1.0x</output></div><div class="row"><button id="scanBtn">摄像头扫码</button><button class="secondary" id="stopScanBtn" disabled>停止扫描</button><button class="secondary" id="imageBtn">选择二维码图片</button><input id="qrImage" type="file" accept="image/*" class="hidden"><input id="qr" placeholder="也可粘贴二维码原文"><button id="signBtn">对启用账号签到</button></div><p id="scanHint" class="muted">安卓手机优先用系统自带识别；其他浏览器自动改用多策略识别（自动降采样、局部二值化、分块扫描），二维码不必居中。可用缩放滑块拉近画面，摄像头需要 HTTPS。也可选择二维码图片或粘贴原文。</p><div id="scanResult"></div></section>
+  <section><h2>点名列表</h2><div class="row"><button id="rollcallsBtn" class="secondary">立即刷新</button><button id="signAllBtn">一键签到全部课程</button><label class="muted"><input id="forceQr" type="checkbox">二维码不匹配也强行尝试</label><span id="lastRefresh" class="muted"></span></div><p class="muted">「一键签到全部课程」把当前所有进行中的点名，按类型（数字/位置/二维码）对能看到它的账号签到，一个账号有多门课也会全部签掉；已签到的账号、已结束的点名自动跳过。数字类需开启自动取码，位置类需配置探测点（空答案策略除外）。二维码本身编码了它属于哪一场点名，默认只签那一场；勾选「强行尝试」会把这张码也发给其它二维码类点名，由学校服务端决定是否接受。</p><div id="signAllResult"></div><div id="rollcalls"></div></section>
 </main>
 <script>
-const $=id=>document.getElementById(id); let loggedIn=false,stream=null,scanActive=false,scanFrameHandle=null,qrDecoderPromise=null,cameraTrack=null,hardwareZoom=false,digitalZoom=1,zoomApplyTimer=null;
+const $=id=>document.getElementById(id);
+let stream=null,scanActive=false,scanFrameHandle=null,qrDecoderPromise=null,cameraTrack=null,hardwareZoom=false,digitalZoom=1,zoomApplyTimer=null;
+const SCAN_HINT_DEFAULT='安卓手机优先用系统自带识别；其他浏览器自动改用多策略识别（自动降采样、局部二值化、分块扫描），二维码不必居中。可用缩放滑块拉近画面，摄像头需要 HTTPS。也可选择二维码图片或粘贴原文。';
+
 // ---- 交互反馈：按钮转圈 / 顶部进度条 / toast ----
 let busyCount=0;
 function updateProgressBar(){const bar=$('progress');if(!bar)return;bar.classList.toggle('on',busyCount>0)}
@@ -50,6 +53,8 @@ function toast(message,type='ok'){
   box.appendChild(node);requestAnimationFrame(()=>node.classList.add('show'));
   setTimeout(()=>{node.classList.remove('show');setTimeout(()=>node.remove(),260)},3200);
 }
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
 // ---- 二维码解码：安卓原生 BarcodeDetector 优先，jsQR 多策略兜底 ----
 const SCAN_MAX_DIM=1024;      // 整帧识别边长上限：原始 1080p 直接喂给 jsQR 反而更难识别
 const SCAN_TILE_MAX=560;      // 分块识别时的边长上限
@@ -134,40 +139,164 @@ async function detectFromVideo(){const video=$('video');if(!video||video.readySt
 function onQrFound(raw){$('qr').value=raw;$('scanHint').textContent='二维码已识别，正在提交签到…';stopCameraScan();toast('二维码已识别');submitQr()}
 async function scanVideoFrame(){if(!scanActive)return;if(scanBusy){scheduleScanFrame();return}const now=(window.performance&&performance.now)?performance.now():Date.now();if(now-lastScanAt<SCAN_FRAME_MS){scheduleScanFrame();return}lastScanAt=now;scanBusy=true;let found=null,decoderError=false;try{found=await detectFromVideo()}catch(e){decoderError=String((e&&e.message)||'').includes('识别库加载失败');if(!decoderError)console.warn('二维码帧解析失败',e)}finally{scanBusy=false}if(decoderError){stopCameraScan();$('scanHint').textContent='扫码组件加载失败，请改用「选择二维码图片」或直接粘贴二维码原文';toast('扫码组件加载失败','bad');return}if(!scanActive)return;if(found){onQrFound(found);return}scheduleScanFrame()}
 async function decodeImageFile(file){const imageUrl=URL.createObjectURL(file);try{const image=await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(Error('无法读取所选图片'));img.src=imageUrl});try{const native=await detectNative(image);if(native)return native}catch(e){}const jsqr=await loadQrDecoder();const longest=Math.max(image.naturalWidth,image.naturalHeight)||1;for(const factor of [1,1.6,.65]){const target=Math.min(2400,Math.max(320,longest*factor)),scale=target/longest;const width=Math.max(1,Math.round(image.naturalWidth*scale)),height=Math.max(1,Math.round(image.naturalHeight*scale));scanCanvas.width=width;scanCanvas.height=height;scanContext.drawImage(image,0,0,width,height);const imageData=scanContext.getImageData(0,0,width,height);for(const mode of ['raw','adaptive','otsu','otsu-invert']){const found=decodeWith(jsqr,imageData,width,height,mode);if(found)return found}}for(const [rx,ry,rw,rh] of [CENTER_REGION,...QUAD_REGIONS]){const sourceWidth=Math.max(1,Math.round(image.naturalWidth*rw)),sourceHeight=Math.max(1,Math.round(image.naturalHeight*rh));const scale=Math.min(1,1200/Math.max(sourceWidth,sourceHeight));const width=Math.max(1,Math.round(sourceWidth*scale)),height=Math.max(1,Math.round(sourceHeight*scale));scanCanvas.width=width;scanCanvas.height=height;scanContext.drawImage(image,Math.round(image.naturalWidth*rx),Math.round(image.naturalHeight*ry),sourceWidth,sourceHeight,0,0,width,height);const imageData=scanContext.getImageData(0,0,width,height);for(const mode of ['raw','adaptive']){const found=decodeWith(jsqr,imageData,width,height,mode);if(found)return found}}return null}finally{URL.revokeObjectURL(imageUrl)}}
-async function submitQr(){
-  const raw=$('qr').value.trim();
-  if(!raw)return alert('先扫码或粘贴二维码内容');
-  await withBusy($('signBtn'),async()=>{
-    try{
-      const x=await api('/api/sign/qr',{method:'POST',body:JSON.stringify({raw})});
-      renderResults(x,$('scanResult'));signSummary(x,'二维码签到');
-      if(sessionExpiredIn(x))refreshAccountStatus();
-      loadRollcalls();
-    }catch(e){alert(e.message)}
-  });
-}
+
+// ==== 会话状态机 ====
+// loggedIn 表示"当前页面认为自己是已登录世代"；authEpoch 是认证世代号，
+// 进入/退出登录都会 +1。任何请求在发出时记住当时世代，收到 401 时只有
+// 「世代没变 + 仍然登录中 + 不是登录类接口」才允许登出，其余一律按过期请求丢弃。
+let loggedIn=false;
 let authEpoch=0;
-async function api(path,options={}){const epoch=authEpoch;const r=await fetch(path,{...options,credentials:'same-origin',headers:{'Content-Type':'application/json',...(options.headers||{})}});const data=await r.json().catch(()=>({message:'服务器响应无法解析'}));if(r.status===401&&path!=='/api/session'){/* 重新登录后，旧会话发出的请求才会 401，不能拿它把新界面重置掉 */if(epoch===authEpoch){loggedIn=false;$('auth').classList.remove('hidden');$('app').classList.add('hidden')}throw Error(data.message||'会话已失效')}if(!r.ok&&data.message)throw Error(data.message);return data}
-async function loadSettings(){try{const s=await api('/api/settings');$('minDelay').value=s.min_delay_seconds;$('maxDelay').value=s.max_delay_seconds;$('autoNumber').checked=s.auto_number;$('radarScheme').value=s.radar_scheme;$('probePoints').value=(s.probes||[]).map(p=>`${p.latitude},${p.longitude}`).join('\n')}catch(e){console.warn(e)}}
+let accountCache=[];        // /api/accounts 与 /api/account-status 的结果缓存
+let rollcallCache=[];       // /api/rollcalls 的结果缓存（单账号签到从这里挑点名）
+let lastQrRaw='';           // 最近一次提交的二维码原文，供失败账号补签使用
+let lastNumberCode='';      // 上次输入的数字签到码，下次 prompt 预填
+let casPoll=null;
+let pollRollcallsTimer=null,pollAccountsTimer=null;
+// 这两个接口的 401 表示"口令错误/尚未登录"，不是会话过期，绝不能触发登出。
+const AUTH_ENDPOINTS=new Set(['/api/admin/login','/api/session']);
+
+class ApiError extends Error{
+  constructor(message,kind,data){super(message);this.name='ApiError';this.kind=kind||'http';this.data=data||null}
+}
+function errText(e){return (e&&e.message)?e.message:String(e||'未知错误')}
+function quietError(e){return Boolean(e&&(e.kind==='stale'||e.kind==='auth'))}
+function showFailure(e,prefix){if(quietError(e))return;toast((prefix?prefix+'：':'')+errText(e),'bad')}
+
+async function api(path,options={}){
+  const epoch=authEpoch;
+  const init={credentials:'same-origin',...options};
+  const authMode=init.authMode||'auto';
+  delete init.authMode;
+  init.headers={'Content-Type':'application/json',...(options.headers||{})};
+  let response;
+  try{response=await fetch(path,init)}
+  catch(err){throw new ApiError('无法连接服务器（'+errText(err)+'）','network')}
+  let data={};
+  try{data=await response.json()}
+  catch(e){
+    // 反代/网关出错时返回的是 HTML（如 502/504），这里保留状态码，别让用户只看到"无法解析"
+    data={message:response.ok?'服务器响应无法解析':'服务器返回了非 JSON 响应（HTTP '+response.status+'）'}
+  }
+  if(response.status===401){
+    const message=(data&&data.message)||'登录已过期，请重新登录';
+    if(authMode!=='silent'&&epoch===authEpoch&&loggedIn&&!AUTH_ENDPOINTS.has(path)){
+      handleAuthLost(message);
+      throw new ApiError('登录已过期，请重新登录','auth',data);
+    }
+    throw new ApiError(message,AUTH_ENDPOINTS.has(path)?'credentials':'stale',data);
+  }
+  if(!response.ok)throw new ApiError((data&&data.message)||('请求失败（HTTP '+response.status+'）'),'http',data);
+  return data;
+}
+function handleAuthLost(message){
+  if(!loggedIn)return;
+  const text=(message&&message!=='未登录')?message:'登录已过期，请重新登录';
+  leaveApp(text);
+  toast(text,'bad');
+}
+function startPolling(){
+  stopPolling();
+  pollRollcallsTimer=setInterval(()=>{if(loggedIn)loadRollcalls()},10000);
+  pollAccountsTimer=setInterval(()=>{if(loggedIn)loadAccounts()},30000);
+}
+function stopPolling(){
+  if(pollRollcallsTimer){clearInterval(pollRollcallsTimer);pollRollcallsTimer=null}
+  if(pollAccountsTimer){clearInterval(pollAccountsTimer);pollAccountsTimer=null}
+}
+function leaveApp(notice){
+  if(casPoll){clearInterval(casPoll);casPoll=null}
+  loggedIn=false;
+  authEpoch++;                 // 作废所有在途请求，旧世代的 401 不再能影响界面
+  stopPolling();
+  try{stopCameraScan()}catch(e){}
+  accountCache=[];rollcallCache=[];lastQrRaw='';
+  $('app').classList.add('hidden');
+  $('auth').classList.remove('hidden');
+  $('accounts').innerHTML='';
+  $('accountsReport').innerHTML='';
+  $('accountResult').innerHTML='';
+  $('rollcalls').innerHTML='';
+  $('scanResult').innerHTML='';
+  $('lastRefresh').textContent='';
+  $('scanHint').textContent=SCAN_HINT_DEFAULT;
+  $('pass').value='';
+  const box=$('loginNotice');
+  if(notice){box.textContent=notice;box.classList.remove('hidden')}
+  else{box.textContent='';box.classList.add('hidden')}
+  try{$('admin').focus()}catch(e){}
+}
+async function step(label,task){
+  try{return await task()}
+  catch(e){if(!quietError(e))console.warn(label+'失败',e);return null}
+}
+async function enterApp(){
+  authEpoch++;                 // 新世代：此前所有在途请求的结果一律作废
+  loggedIn=true;
+  $('loginNotice').classList.add('hidden');
+  $('auth').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  startPolling();
+  // 首屏请求彼此隔离：任何一个失败（含单个接口报错）都不影响其它请求，也不会把界面踢回登录页。
+  // 只有"当前世代的 401"会在 api() 里触发 leaveApp，这也是唯一允许登出的路径。
+  await step('设置',loadSettings);
+  await step('账号列表',loadAccounts);
+  await Promise.all([step('账号状态',()=>refreshAccountStatus(false)),step('点名列表',loadRollcalls)]);
+}
+
+// ==== 签到设置 ====
+async function loadSettings(){
+  const s=await api('/api/settings');
+  if(s&&s.min_delay_seconds!==undefined)$('minDelay').value=s.min_delay_seconds;
+  if(s&&s.max_delay_seconds!==undefined)$('maxDelay').value=s.max_delay_seconds;
+  $('autoNumber').checked=Boolean(s&&s.auto_number);
+  if(s&&s.radar_scheme)$('radarScheme').value=s.radar_scheme;
+  $('probePoints').value=Array.isArray(s&&s.probes)?s.probes.map(p=>`${p.latitude},${p.longitude}`).join('\n'):'';
+}
+function readProbes(){
+  return String($('probePoints').value||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean).map(line=>{
+    const parts=line.split(/[,，\s]+/).filter(Boolean).map(Number);
+    if(parts.length<2||!Number.isFinite(parts[0])||!Number.isFinite(parts[1]))return null;
+    return {latitude:parts[0],longitude:parts[1]};
+  }).filter(Boolean);
+}
+function probeCentroid(probes){
+  const sum=probes.reduce((acc,p)=>({latitude:acc.latitude+p.latitude,longitude:acc.longitude+p.longitude}),{latitude:0,longitude:0});
+  return {latitude:sum.latitude/probes.length,longitude:sum.longitude/probes.length};
+}
 $('saveSettings').onclick=()=>withBusy($('saveSettings'),async()=>{
   try{
-    const probes=$('probePoints').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean).map(x=>{const [latitude,longitude]=x.split(',').map(Number);if(!Number.isFinite(latitude)||!Number.isFinite(longitude))throw Error('探测点格式错误');return {latitude,longitude}});
+    const probes=readProbes();
+    const rawLines=String($('probePoints').value||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+    if(rawLines.length!==probes.length)throw Error('探测点格式错误，每行应为「纬度,经度」');
     const x=await api('/api/settings',{method:'PUT',body:JSON.stringify({min_delay_seconds:Number($('minDelay').value),max_delay_seconds:Number($('maxDelay').value),auto_number:$('autoNumber').checked,radar_scheme:$('radarScheme').value,probes})});
-    toast(x.message||'设置已保存');
-  }catch(e){alert(e.message)}
+    toast((x&&x.message)||'设置已保存');
+  }catch(e){showFailure(e,'保存设置失败')}
 });
-async function showLogin(){authEpoch++;loggedIn=true;$('auth').classList.add('hidden');$('app').classList.remove('hidden');loadSettings();await loadAccounts();refreshAccountStatus();loadRollcalls()}
-$('adminBtn').onclick=()=>withBusy($('adminBtn'),async()=>{try{await api('/api/admin/login',{method:'POST',body:JSON.stringify({password:$('admin').value})});await showLogin()}catch(e){alert(e.message)}});
+
+// ==== 登录 / 登出 ====
+$('adminBtn').onclick=()=>withBusy($('adminBtn'),async()=>{
+  const password=$('admin').value;
+  if(!password){toast('请输入管理员口令','bad');return}
+  try{
+    await api('/api/admin/login',{method:'POST',body:JSON.stringify({password})});
+    $('admin').value='';
+    await enterApp();
+  }catch(e){
+    // 这里的 401 表示口令错误，不是会话过期：只在登录页里提示，不涉及登录态。
+    const box=$('loginNotice');
+    box.textContent=errText(e);box.classList.remove('hidden');
+    toast(errText(e),'bad');
+  }
+});
 $('schoolBtn').onclick=()=>withBusy($('schoolBtn'),async()=>{
   try{
     const x=await api('/api/login',{method:'POST',body:JSON.stringify({username:$('user').value,password:$('pass').value,remember_me:$('remember').checked})});
     $('pass').value='';
-    toast(x.message||'登录成功');
-    await refreshAccountStatus();
+    toast((x&&x.message)||'登录成功');
+    await refreshAccountStatus(false);
     loadRollcalls();
-  }catch(e){alert(e.message)}
+  }catch(e){showFailure(e,'账号登录失败')}
 });
-let casPoll=null;
 $('casWebBtn').onclick=()=>withBusy($('casWebBtn'),async()=>{
   try{
     const start=await api('/api/cas/start',{method:'POST',body:'{}'});
@@ -176,86 +305,596 @@ $('casWebBtn').onclick=()=>withBusy($('casWebBtn'),async()=>{
     casPoll=setInterval(async()=>{
       try{
         const r=await api('/api/cas/status/'+encodeURIComponent(start.flow_id));
-        if(r.ok){
+        if(r&&r.ok){
           clearInterval(casPoll);casPoll=null;
           $('casPanel').classList.add('hidden');$('casFrame').src='about:blank';
-          toast(r.message);await refreshAccountStatus();loadRollcalls();
+          toast(r.message||'学校网页登录成功');
+          await refreshAccountStatus(false);
+          loadRollcalls();
         }
-      }catch(e){clearInterval(casPoll);casPoll=null;toast('认证状态查询失败：'+e.message,'bad')}
+      }catch(e){
+        clearInterval(casPoll);casPoll=null;
+        if(!quietError(e))toast('认证状态查询失败：'+errText(e),'bad');
+      }
     },1800);
     toast('已打开学校认证页面，请在其中完成验证');
-  }catch(e){alert(e.message)}
+  }catch(e){showFailure(e,'打开学校认证失败')}
 });
-$('refreshBtn').onclick=()=>withBusy($('refreshBtn'),async()=>{
-  try{
-    const x=await api('/api/refresh',{method:'POST',body:'{}'});
-    if(Array.isArray(x.accounts)){accountCache=x.accounts;renderAccounts()}
-    const failed=x.failed||[],skipped=x.skipped||[];
-    if(!failed.length&&!skipped.length){toast(`会话刷新完成：成功 ${x.updated||0} 个账号`)}
-    else{
-      const lines=[`会话刷新完成：成功 ${x.updated||0} 个`];
-      if(failed.length)lines.push('刷新失败，需要重新输入密码：\n'+failed.map(f=>`• ${f.name||f.username||f.id}：${f.message}`).join('\n'));
-      if(skipped.length)lines.push('没有保存统一认证票据：\n'+skipped.map(f=>`• ${f.name||f.username||f.id}：${f.message}`).join('\n'));
-      alert(lines.join('\n\n'));
-    }
-    refreshAccountStatus();
-    loadRollcalls();
-  }catch(e){alert(e.message)}
-});
-$('accountsBtn').onclick=()=>withBusy($('accountsBtn'),()=>refreshAccountStatus(true));
-$('rollcallsBtn').onclick=()=>withBusy($('rollcallsBtn'),async()=>{const ok=await loadRollcalls();toast(ok?'点名列表已刷新':'点名刷新失败，请查看下方提示',ok?'ok':'bad')});
-let accountCache=[];
+
+// ==== 学校账号 ====
+function accountName(entry){
+  if(!entry)return '未知账号';
+  return entry.name||entry.username||entry.student_id||entry.id||'未知账号';
+}
+function accountById(id){return accountCache.find(a=>a.id===id)||null}
+function accountLabelById(id){const a=accountById(id);return a?accountName(a):(id||'未知账号')}
 function statusBadge(a){
   if(!a.checked_at)return '<span class="badge unknown">未检测</span>';
   return a.expired?'<span class="badge bad">已过期</span>':'<span class="badge ok">正常</span>';
 }
 function renderAccounts(){
-  if(!accountCache.length){$('accounts').innerHTML='<p class="muted">暂无账号</p>';return}
+  const node=$('accounts');
+  if(!accountCache.length){node.innerHTML='<p class="muted">暂无账号</p>';return}
   const expired=accountCache.filter(a=>a.expired).length;
-  const summary=`<p class="muted">共 ${accountCache.length} 个账号${expired?`，其中 <b class="bad">${expired}</b> 个已过期（请用帐号密码重新登录该账号更新会话）`:'，全部正常'}</p>`;
-  $('accounts').innerHTML=summary+accountCache.map(a=>{
+  const disabled=accountCache.filter(a=>!a.enabled).length;
+  let summary=`共 ${accountCache.length} 个账号`;
+  summary+=expired?`，其中 <b class="bad">${expired}</b> 个已过期（请用帐号密码重新登录该账号更新会话）`:'，全部正常';
+  if(disabled)summary+=`；<b>${disabled}</b> 个已停用（不参与批量签到，但可手动单次签到）`;
+  node.innerHTML=`<p class="muted">${summary}</p>`+accountCache.map(a=>{
     const checked=a.checked_at?`检测于 ${new Date(a.checked_at*1000).toLocaleTimeString()}`:'尚未检测';
     const detail=[checked,a.status_detail].filter(Boolean).map(escapeHtml).join(' · ');
     const cannotRefresh=a.can_refresh?'':'<br><span class="muted">未保存统一认证票据，无法自动续期</span>';
-    return `<p>${escapeHtml(a.name||a.username)}（${escapeHtml(a.student_id||'未知学号')}） ${statusBadge(a)} · ${a.enabled?'启用':'停用'}<br><span class="muted">${detail}</span>${cannotRefresh}<br><button class="secondary" onclick="toggleAccount('${encodeURIComponent(a.id)}',this)">${a.enabled?'停用':'启用'}</button> <button class="secondary" onclick="deleteAccount('${encodeURIComponent(a.id)}',this)">删除</button></p>`;
+    const id=encodeURIComponent(a.id);
+    return `<div class="account-row"><div><b>${escapeHtml(accountName(a))}</b>（${escapeHtml(a.student_id||'未知学号')}） ${statusBadge(a)} · ${a.enabled?'启用':'停用'}</div>`
+      +`<div class="muted">${detail}</div>${cannotRefresh}`
+      +`<div class="row account-actions">`
+      +`<button class="secondary" onclick="toggleAccount('${id}',this)">${a.enabled?'停用':'启用'}</button>`
+      +`<button class="secondary" onclick="deleteAccount('${id}',this)">删除</button>`
+      +`<button class="secondary" onclick="accountNumberSign('${id}',this)">自动数字签到</button>`
+      +`<button class="secondary" onclick="accountRadarSign('${id}',this)">位置签到</button>`
+      +(a.enabled?'':'<span class="muted">（停用中，仍可手动单次签到）</span>')
+      +`</div></div>`;
   }).join('');
 }
-async function loadAccounts(){try{const next=await api('/api/accounts');const changed=JSON.stringify(next)!==JSON.stringify(accountCache);accountCache=next;if(changed)renderAccounts()}catch(e){if(loggedIn)console.warn(e)}}
+async function loadAccounts(){
+  if(!loggedIn)return false;
+  try{
+    const next=await api('/api/accounts');
+    const list=Array.isArray(next)?next:[];
+    const changed=JSON.stringify(list)!==JSON.stringify(accountCache);
+    accountCache=list;
+    if(changed)renderAccounts();
+    return true;
+  }catch(e){if(!quietError(e))console.warn('加载账号失败',e);return false}
+}
 async function refreshAccountStatus(notify=false){
-  if(!loggedIn)return;
+  if(!loggedIn)return false;
   try{
     const x=await api('/api/account-status',{method:'POST',body:'{}'});
-    if(Array.isArray(x.accounts)){
-      accountCache=x.accounts;renderAccounts();
-      if(notify){const expired=accountCache.filter(a=>a.expired).length;toast(expired?`检测完成：${expired} 个账号已过期`:'检测完成：所有账号会话正常',expired?'bad':'ok')}
+    if(Array.isArray(x&&x.accounts)){accountCache=x.accounts;renderAccounts()}
+    if(notify)renderAccountStatusReport();
+    return true;
+  }catch(e){
+    if(!quietError(e)){
+      renderAccountsReport(`<p class="bad">账号状态检测失败：${escapeHtml(errText(e))}</p>`);
+      if(notify)toast('账号状态检测失败：'+errText(e),'bad');
     }
-  }catch(e){console.warn('账号状态检测失败',e);if(notify)toast('账号状态检测失败：'+e.message,'bad')}
+    return false;
+  }
 }
-function sessionExpiredIn(x){const list=Array.isArray(x)?x:(x&&Array.isArray(x.results)?x.results:[]);return list.some(r=>String((r&&r.message)||'').includes('登录已过期'))}
-function signSummary(x,label){const list=Array.isArray(x)?x:(x&&Array.isArray(x.results)?x.results:[]);if(!list.length)return;const ok=list.filter(r=>r.success).length;toast(`${label}：成功 ${ok}/${list.length}`,ok===list.length?'ok':'bad')}
-async function toggleAccount(encoded,button){await withBusy(button,async()=>{try{const x=await api('/api/accounts/'+encodeURIComponent(decodeURIComponent(encoded)),{method:'PUT',body:'{}'});toast(x.enabled?'账号已启用':'账号已停用');await loadAccounts()}catch(e){alert(e.message)}})}
-async function deleteAccount(encoded,button){if(!confirm('确认删除该账号及其会话？'))return;await withBusy(button,async()=>{try{await api('/api/accounts/'+encodeURIComponent(decodeURIComponent(encoded)),{method:'DELETE'});toast('账号已删除');await loadAccounts()}catch(e){alert(e.message)}})}
-async function loadRollcalls(){if(!loggedIn)return false;try{const xs=await api('/api/rollcalls');$('lastRefresh').textContent='更新于 '+new Date().toLocaleTimeString();$('rollcalls').innerHTML=xs.length?xs.map(r=>`<div class="rollcall"><b>${escapeHtml(r.course_title||r.title)}</b> · ${escapeHtml(r.title)}<div>${escapeHtml(r.rollcall_time)} · ${escapeHtml(r.status)}${r.is_expired?' · 已结束':''}</div>${r.is_number?`<button onclick="numberSign('${encodeURIComponent(r.id)}',this)">数字签到</button>`:''}${r.is_radar?`<button onclick="radarTriangulate('${encodeURIComponent(r.id)}',this)">雷达三点签到</button><button class="secondary" onclick="radarManual('${encodeURIComponent(r.id)}',this)">输入坐标签到</button>`:''}</div>`).join(''):'暂无点名';return true}catch(e){$('rollcalls').textContent=e.message;return false}}
+function renderAccountsReport(html){const node=$('accountsReport');if(node)node.innerHTML=html}
+function accountStatusRows(){
+  return accountCache.map(a=>{
+    const badge=a.expired?'<span class="badge bad">已过期</span>':(a.checked_at?'<span class="badge ok">正常</span>':'<span class="badge unknown">未检测</span>');
+    const detail=String(a.status_detail||'').trim()||(a.checked_at?'会话正常':'尚未检测');
+    return `<div class="sign-row ${a.expired?'bad':''}"><div class="sign-head"><b>${escapeHtml(accountName(a))}</b> ${badge} <span class="muted">${a.enabled?'启用':'停用'}</span></div><div class="sign-detail ${a.expired?'bad':'muted'}">${escapeHtml(detail)}</div></div>`;
+  }).join('');
+}
+function renderAccountStatusReport(){
+  const expired=accountCache.filter(a=>a.expired).length;
+  renderAccountsReport(`<div class="report"><p class="sign-summary"><b>账号状态检测</b> · 共 ${accountCache.length} 个，<span class="${expired?'bad':'ok'}">${expired?expired+' 个已过期':'全部正常'}</span></p>${accountStatusRows()||'<p class="muted">暂无账号</p>'}</div>`);
+}
+function renderRefreshReport(x,failed,skipped){
+  const updated=Number(x&&x.updated)||0;
+  const failedHtml=failed.length?`<p class="bad">失败 ${failed.length} 个（需要重新输入密码）：</p>`+failed.map(f=>`<div class="sign-row bad"><div class="sign-head"><b>${escapeHtml(accountName(f))}</b> <span class="badge bad">失败</span></div><div class="sign-detail bad">${escapeHtml(String(f.message||'未知原因'))}</div></div>`).join(''):'';
+  const skippedHtml=skipped.length?`<p class="muted">跳过 ${skipped.length} 个（没有保存统一认证票据）：</p>`+skipped.map(f=>`<div class="sign-row"><div class="sign-head"><b>${escapeHtml(accountName(f))}</b> <span class="badge unknown">跳过</span></div><div class="sign-detail muted">${escapeHtml(String(f.message||''))}</div></div>`).join(''):'';
+  renderAccountsReport(`<div class="report"><p class="sign-summary"><b>刷新登录会话</b> · 成功 <span class="ok">${updated}</span> / 失败 <span class="${failed.length?'bad':'muted'}">${failed.length}</span> / 跳过 <span class="${skipped.length?'bad':'muted'}">${skipped.length}</span></p>${failedHtml}${skippedHtml}</div>`);
+}
+$('refreshBtn').onclick=()=>withBusy($('refreshBtn'),async()=>{
+  renderAccountsReport(`<p class="muted">刷新登录会话：正在处理 ${accountCache.length} 个账号…（逐个访问学校，可能需要十几秒，请勿重复点击）</p>`);
+  try{
+    const x=await api('/api/refresh',{method:'POST',body:'{}'});
+    if(Array.isArray(x&&x.accounts)){accountCache=x.accounts;renderAccounts()}
+    const failed=Array.isArray(x&&x.failed)?x.failed:[];
+    const skipped=Array.isArray(x&&x.skipped)?x.skipped:[];
+    renderRefreshReport(x,failed,skipped);
+    const okCount=Number(x&&x.updated)||0;
+    if(!failed.length&&!skipped.length)toast(`会话刷新完成：成功 ${okCount} 个账号`);
+    else toast(`会话刷新完成：成功 ${okCount} 个，失败 ${failed.length} 个${skipped.length?`，跳过 ${skipped.length} 个`:''}`,failed.length?'bad':'ok');
+  }catch(e){
+    renderAccountsReport(`<p class="bad">刷新登录会话失败：${escapeHtml(errText(e))}</p>`);
+    showFailure(e,'刷新登录会话失败');
+  }
+});
+$('accountsBtn').onclick=()=>withBusy($('accountsBtn'),async()=>{
+  renderAccountsReport(`<p class="muted">检测账号状态：正在处理 ${accountCache.length} 个账号…（逐个访问学校，可能需要十几秒，请勿重复点击）</p>`);
+  const ok=await refreshAccountStatus(true);
+  if(!ok)return;
+  const expired=accountCache.filter(a=>a.expired).length;
+  toast(expired?`检测完成：${expired} 个账号已过期`:'检测完成：所有账号会话正常',expired?'bad':'ok');
+});
+async function toggleAccount(encoded,button){
+  await withBusy(button,async()=>{
+    try{
+      const x=await api('/api/accounts/'+encodeURIComponent(decodeURIComponent(encoded)),{method:'PUT',body:'{}'});
+      toast(x&&x.enabled?'账号已启用':'账号已停用');
+      await loadAccounts();
+    }catch(e){showFailure(e,'切换账号状态失败')}
+  });
+}
+async function deleteAccount(encoded,button){
+  if(!confirm('确认删除该账号及其会话？'))return;
+  await withBusy(button,async()=>{
+    try{
+      await api('/api/accounts/'+encodeURIComponent(decodeURIComponent(encoded)),{method:'DELETE'});
+      toast('账号已删除');
+      await loadAccounts();
+    }catch(e){showFailure(e,'删除账号失败')}
+  });
+}
+
+// ==== 点名列表 ====
+async function loadRollcalls(){
+  if(!loggedIn)return false;
+  try{
+    const xs=await api('/api/rollcalls');
+    rollcallCache=Array.isArray(xs)?xs:(Array.isArray(xs&&xs.rollcalls)?xs.rollcalls:[]);
+    $('lastRefresh').textContent='更新于 '+new Date().toLocaleTimeString();
+    renderRollcalls();
+    return true;
+  }catch(e){
+    if(!quietError(e))$('rollcalls').innerHTML=`<p class="bad">点名刷新失败：${escapeHtml(errText(e))}</p>`;
+    return false;
+  }
+}
+function rollcallLabel(r){const course=r.course_title||r.title||'未命名课程';return r.title&&r.course_title?`${course} · ${r.title}`:course}
+function renderRollcalls(){
+  const node=$('rollcalls');
+  if(!rollcallCache.length){node.innerHTML='<p class="muted">暂无点名</p>';return}
+  node.innerHTML=rollcallCache.map(r=>{
+    const id=encodeURIComponent(r.id);
+    const tags=(r.is_number?'<span class="badge unknown">数字</span> ':'')+(r.is_radar?'<span class="badge unknown">位置</span>':'');
+    const actions=r.is_expired?'<span class="muted">已结束，不再显示签到入口</span>':
+      (r.is_number?`<button onclick="numberSign('${id}',this)">数字签到</button>`:'')
+      +(r.is_radar?`<button class="${r.is_number?'secondary':''}" onclick="radarTriangulate('${id}',this)">雷达三点签到</button><button class="secondary" onclick="radarManual('${id}',this)">输入坐标签到</button>`:'');
+    return `<div class="rollcall"><b>${escapeHtml(rollcallLabel(r))}</b><div class="muted">${escapeHtml(r.rollcall_time||'')} · ${escapeHtml(r.status||'')}${r.is_expired?' · 已结束':''} ${tags}</div><div class="row">${actions}</div></div>`;
+  }).join('');
+}
+$('rollcallsBtn').onclick=()=>withBusy($('rollcallsBtn'),async()=>{
+  const ok=await loadRollcalls();
+  if(ok)toast('点名列表已刷新');
+  else if($('rollcalls').textContent.trim())toast('点名刷新失败，请查看下方提示','bad');
+});
+
+// ==== 跨课程一键签到 ====
+/** 把后端按点名分组的结果渲染成"课程 → 账号"两层，失败的排前面。 */
+function renderSignAllReport(x){
+  const node=$('signAllResult');
+  if(!node)return;
+  const groups=Array.isArray(x&&x.rollcalls)?x.rollcalls:[];
+  const skipped=Array.isArray(x&&x.skipped)?x.skipped:[];
+  const unreadable=Array.isArray(x&&x.unreadable_accounts)?x.unreadable_accounts:[];
+  const summary=(x&&x.summary)||{};
+  const parts=[];
+  parts.push(`<p class="sign-summary">跨课程签到：已处理 <b>${summary.rollcalls||0}</b> 场点名 · 成功 <span class="ok">${summary.signed||0}</span> / 失败 <span class="${summary.failed?'bad':'muted'}">${summary.failed||0}</span> / 跳过 <span class="muted">${summary.skipped||0}</span></p>`);
+  if(x&&x.truncated)parts.push('<p class="bad">点名 × 账号 任务太多，本次只处理了一部分，请再点一次继续。</p>');
+  groups.forEach(g=>{
+    const rows=Array.isArray(g.results)?g.results:[];
+    const bad=rows.filter(r=>!r.success).length;
+    const ordered=[...rows.filter(r=>!r.success),...rows.filter(r=>r.success)];
+    const kindLabel=g.kind==='number'?'数字':(g.kind==='radar'?'位置':'二维码');
+    parts.push(`<div class="rollcall"><b>${escapeHtml(g.course_title||g.title||g.rollcall_id)}</b>${g.title&&g.course_title?` · ${escapeHtml(g.title)}`:''} <span class="badge unknown">${kindLabel}</span> <span class="${bad?'bad':'muted'}">${bad?bad+' 个失败':'全部成功'}</span></div>`);
+    parts.push(ordered.map(r=>signRowHtml({account_id:r.account_id,success:Boolean(r.success),message:String(r.message||''),distance:(typeof r.distance==='number')?r.distance:null},{})).join(''));
+  });
+  if(skipped.length){
+    // code=truncated 是整体提示（上面已有横幅），不重复列出
+    const rows=skipped.filter(s=>s&&s.code!=='truncated');
+    if(rows.length){
+      parts.push('<p class="muted">已跳过：</p>'+rows.map(s=>`<p class="muted">· ${escapeHtml(s.course_title||s.rollcall_id||'未命名')}${s.title?' · '+escapeHtml(s.title):''}：${escapeHtml(s.reason||'')}</p>`).join(''));
+    }
+  }
+  if(unreadable.length){
+    parts.push('<p class="bad">这些账号读不到点名列表（可能是会话过期）：</p>'+unreadable.map(u=>`<p class="bad">· ${escapeHtml(u.name||u.account_id)}：${escapeHtml(u.message||'')}</p>`).join(''));
+  }
+  node.innerHTML=`<div class="report">${parts.join('')}</div>`;
+}
+$('signAllBtn').onclick=()=>withBusy($('signAllBtn'),async()=>{
+  const node=$('signAllResult');
+  if(node)renderPending(node,'正在汇总所有课程的点名并逐个签到，请稍候…',false);
+  // 位置类点名需要坐标：优先用签到设置里的探测点中心（后端在没坐标时会跳过位置类并说明）
+  let latitude=null,longitude=null;
+  if($('radarScheme').value!=='empty'){
+    const probes=readProbes();
+    if(probes.length){
+      const c=probeCentroid(probes);
+      latitude=c.latitude;longitude=c.longitude;
+    }else{
+      toast('没有配置探测点：本次只签数字/二维码类点名，位置类会被跳过','bad');
+    }
+  }
+  const raw=lastQrRaw||$('qr').value.trim();
+  const body={};
+  if(latitude!==null&&longitude!==null){body.latitude=latitude;body.longitude=longitude}
+  if(raw)body.qr_raw=raw;
+  if($('forceQr')&&$('forceQr').checked)body.allow_qr_mismatch=true;
+  try{
+    const x=await api('/api/sign/all',{method:'POST',body:JSON.stringify(body)});
+    renderSignAllReport(x);
+    const s=(x&&x.summary)||{};
+    toast(`跨课程签到：成功 ${s.signed||0} / 失败 ${s.failed||0} / 跳过 ${s.skipped||0}`,(s.failed||0)?'bad':'ok');
+    loadRollcalls();
+    loadAccounts();
+  }catch(e){
+    if(quietError(e))return;
+    if(node)renderPending(node,'一键签到失败：'+errText(e),true);
+    toast('一键签到失败：'+errText(e),'bad');
+  }
+});
+/** 从缓存的点名里挑一个进行中的点名：返回 null=没有，undefined=用户取消，否则是点名对象。 */
+async function chooseRollcall(kind){
+  const label=kind==='number'?'数字':'位置';
+  if(!rollcallCache.length)await loadRollcalls();
+  const list=rollcallCache.filter(r=>r&&!r.is_expired&&(kind==='number'?r.is_number:r.is_radar));
+  if(!list.length){toast(`当前没有进行中的${label}点名`,'bad');return null}
+  if(list.length===1)return list[0];
+  const menu=list.map((r,i)=>`${i+1}. ${rollcallLabel(r)}｜${r.rollcall_time||''}`).join('\n');
+  const answer=prompt(`当前有 ${list.length} 个进行中的${label}点名，请输入序号：\n\n${menu}`,'1');
+  if(answer===null)return undefined;
+  const index=Number(String(answer).trim());
+  if(!Number.isInteger(index)||index<1||index>list.length){toast(`序号无效，请输入 1-${list.length}`,'bad');return undefined}
+  return list[index-1];
+}
+function signList(x){
+  if(Array.isArray(x))return x;
+  if(x&&Array.isArray(x.results))return x.results;
+  if(x&&Array.isArray(x.accounts))return x.accounts;
+  return [];
+}
+function signSummary(x,label){
+  const list=signList(x);
+  if(!list.length)return;
+  const ok=list.filter(r=>r&&r.success).length;
+  toast(`${label}：成功 ${ok}/${list.length}`,ok===list.length?'ok':'bad');
+}
+function sessionExpiredIn(x){return signList(x).some(r=>String((r&&r.message)||'').includes('登录已过期'))}
+function normalizeSign(x,id){
+  const source=(x&&typeof x==='object')?x:{};
+  return {
+    account_id:source.account_id||id||'',
+    success:Boolean(source.success),
+    message:String(source.message||''),
+    distance:(typeof source.distance==='number')?source.distance:null
+  };
+}
+function signDetailText(r){
+  const distance=(typeof r.distance==='number'&&Number.isFinite(r.distance))?`（距离 ${Math.round(r.distance)} 米）`:'';
+  return String(r.message||'')+distance;
+}
+// 单账号接口失败时后端仍返回 {account_id,success:false,message,error}，直接用它当失败原因，
+// 比前端统一包一句"请求失败"更能说明问题（超时 / 签到码错误 / 账号不存在 各有各的话术）。
+function failureResult(e,id){
+  const payload=(e&&e.data&&typeof e.data==='object')?e.data:null;
+  if(payload&&Object.prototype.hasOwnProperty.call(payload,'success')){
+    const result=normalizeSign(payload,id);
+    if(!result.message)result.message=errText(e);
+    return result;
+  }
+  return {account_id:id||'',success:false,message:'请求失败：'+errText(e),distance:null};
+}
+function renderPending(node,text,bad){if(!node)return;node.innerHTML=`<p class="${bad?'bad':'muted'}">${escapeHtml(text)}</p>`}
+function signRowHtml(r,options){
+  const name=accountLabelById(r.account_id);
+  const badge=r.success?'<span class="badge ok">成功</span>':'<span class="badge bad">失败</span>';
+  const retry=(!r.success&&options.retry&&r.account_id)?` <button class="secondary" data-aid="${escapeHtml(r.account_id)}" onclick="retryQrSign(this)">补签</button>`:'';
+  return `<div class="sign-row ${r.success?'ok':'bad'}"><div class="sign-head"><b>${escapeHtml(name)}</b> ${badge}${retry}</div><div class="sign-detail ${r.success?'muted':'bad'}">${escapeHtml(signDetailText(r))}</div></div>`;
+}
+function renderSignResults(x,node,options={}){
+  if(!node)return;
+  const list=signList(x);
+  if(!list.length){
+    renderPending(node,(x&&x.message)||'没有返回任何账号结果',Boolean(x&&x.ok===false));
+    return;
+  }
+  const rows=list.map(r=>({account_id:(r&&r.account_id)||'',success:Boolean(r&&r.success),message:String((r&&r.message)||''),distance:(r&&typeof r.distance==='number')?r.distance:null}));
+  const okCount=rows.filter(r=>r.success).length;
+  const badCount=rows.length-okCount;
+  const title=options.title?escapeHtml(options.title):'';
+  const target=(x&&x.target&&typeof x.target.latitude==='number')?`<p class="muted">定位目标点：${x.target.latitude.toFixed(6)}, ${x.target.longitude.toFixed(6)}</p>`:'';
+  // 失败的排在最前面，避免被一长串「成功」淹没
+  const ordered=[...rows.filter(r=>!r.success),...rows.filter(r=>r.success)];
+  node.innerHTML=`<div class="report"><p class="sign-summary" data-title="${title}">${title?`<b>${title}</b> · `:''}成功 <span class="ok">${okCount}</span> / 失败 <span class="${badCount?'bad':'muted'}">${badCount}</span></p>${target}${ordered.map(r=>signRowHtml(r,options)).join('')}</div>`;
+}
+function updateSignSummary(scope){
+  const container=(scope&&scope.closest)?scope.closest('.report'):null;
+  if(!container)return;
+  const summary=container.querySelector('.sign-summary');
+  if(!summary)return;
+  const rows=[...container.querySelectorAll('.sign-row')];
+  const ok=rows.filter(r=>r.classList.contains('ok')).length;
+  const bad=rows.length-ok;
+  const title=summary.dataset.title||'';
+  summary.innerHTML=`${title?`<b>${escapeHtml(title)}</b> · `:''}成功 <span class="ok">${ok}</span> / 失败 <span class="${bad?'bad':'muted'}">${bad}</span>`;
+}
+function updateSignRow(row,result){
+  if(!row)return;
+  row.className='sign-row '+(result.success?'ok':'bad');
+  const head=row.querySelector('.sign-head');
+  if(head){
+    // 补签再次失败时按钮必须还在，否则用户只能重跑一遍整次扫码才能再试。
+    // account_id 可能没带回来，就从原来的按钮上捞。
+    const previous=head.querySelector('[data-aid]');
+    const aid=result.account_id||(previous&&previous.dataset?previous.dataset.aid:'')||'';
+    const retry=(!result.success&&aid)?` <button class="secondary" data-aid="${escapeHtml(aid)}" onclick="retryQrSign(this)">补签</button>`:'';
+    head.innerHTML=`<b>${escapeHtml(accountLabelById(aid))}</b> ${result.success?'<span class="badge ok">成功</span>':'<span class="badge bad">失败</span>'}${retry}`;
+  }
+  const detail=row.querySelector('.sign-detail');
+  if(detail){detail.className='sign-detail '+(result.success?'muted':'bad');detail.textContent=signDetailText(result)}
+  updateSignSummary(row);
+}
+function reportOneSign(id,result,label){
+  const node=$('accountResult');
+  if(!node)return;
+  node.innerHTML=`<div class="report"><p class="sign-summary"><b>${escapeHtml(label)}</b> · ${escapeHtml(accountLabelById(id))} ${result.success?'<span class="badge ok">成功</span>':'<span class="badge bad">失败</span>'}</p><div class="sign-detail ${result.success?'muted':'bad'}">${escapeHtml(signDetailText(result))}</div></div>`;
+}
+
+// ==== 全账号签到（点名列表里的按钮） ====
 async function numberSign(encoded,button){
-  const code=$('autoNumber').checked?'':prompt('输入 4 位签到码');
-  if(code===null)return;
-  await withBusy(button,async()=>{try{const x=await api('/api/sign/number',{method:'POST',body:JSON.stringify({rollcall_id:decodeURIComponent(encoded),code})});renderResults(x,$('scanResult'));signSummary(x,'数字签到');if(sessionExpiredIn(x))refreshAccountStatus()}catch(e){alert(e.message)}});
+  const rid=decodeURIComponent(encoded);
+  let code='';
+  if(!$('autoNumber').checked){
+    const input=prompt('输入 4 位数字签到码',lastNumberCode||'');
+    if(input===null)return;
+    code=String(input).trim();
+    if(!/^\d{3,8}$/.test(code)){toast('数字签到码必须是 3-8 位数字','bad');return}
+    lastNumberCode=code;
+  }
+  await withBusy(button,async()=>{
+    try{
+      const x=await api('/api/sign/number',{method:'POST',body:JSON.stringify({rollcall_id:rid,code})});
+      renderSignResults(x,$('scanResult'),{title:'数字签到结果'});
+      signSummary(x,'数字签到');
+      if(sessionExpiredIn(x))refreshAccountStatus(false);
+    }catch(e){showFailure(e,'数字签到失败')}
+  });
+}
+function askRadarTarget(label){
+  const probes=readProbes();
+  let preset='';
+  let tip='签到设置里还没有探测点。';
+  if(probes.length){
+    const center=probeCentroid(probes);
+    preset=`${center.latitude.toFixed(6)},${center.longitude.toFixed(6)}`;
+    tip=`已读取 ${probes.length} 个探测点，中心点在 ${preset}。`;
+  }
+  const answer=prompt(`为「${label}」输入位置签到坐标（纬度,经度）\n${tip}\n说明：三点定位需要服务端实测距离，单账号签到用这里确认的坐标作为目标位置；要精确三点定位请用点名列表里的「雷达三点签到」（作用于所有启用账号）。`,preset);
+  if(answer===null)return null;
+  const parts=String(answer).split(/[,，\s]+/).filter(Boolean).map(Number);
+  if(parts.length<2||!Number.isFinite(parts[0])||!Number.isFinite(parts[1])){toast('坐标格式错误，应为「纬度,经度」','bad');return null}
+  const latitude=parts[0],longitude=parts[1];
+  if(latitude<-90||latitude>90||longitude<-180||longitude>180){toast('坐标超出范围','bad');return null}
+  return {latitude,longitude};
 }
 async function radarManual(encoded,button){
-  const lat=prompt('纬度'),lon=prompt('经度');
-  if(lat===null||lon===null)return;
-  await withBusy(button,async()=>{try{const x=await api('/api/sign/radar',{method:'POST',body:JSON.stringify({rollcall_id:decodeURIComponent(encoded),latitude:Number(lat),longitude:Number(lon)})});renderResults(x,$('scanResult'));signSummary(x,'雷达签到');if(sessionExpiredIn(x))refreshAccountStatus()}catch(e){alert(e.message)}});
+  const rid=decodeURIComponent(encoded);
+  const target=askRadarTarget('全部启用账号');
+  if(!target)return;
+  await withBusy(button,async()=>{
+    try{
+      const x=await api('/api/sign/radar',{method:'POST',body:JSON.stringify({rollcall_id:rid,latitude:target.latitude,longitude:target.longitude})});
+      renderSignResults(x,$('scanResult'),{title:'雷达签到结果'});
+      signSummary(x,'雷达签到');
+      if(sessionExpiredIn(x))refreshAccountStatus(false);
+    }catch(e){showFailure(e,'雷达签到失败')}
+  });
 }
 async function radarTriangulate(encoded,button){
   const rid=decodeURIComponent(encoded);
   if($('radarScheme').value==='empty'){
-    await withBusy(button,async()=>{try{const x=await api('/api/sign/radar/empty',{method:'POST',body:JSON.stringify({rollcall_id:rid,code:''})});renderResults(x,$('scanResult'));if(x&&x.ok===false)toast(x.message||'雷达签到失败','bad');signSummary(x,'雷达签到');if(sessionExpiredIn(x))refreshAccountStatus()}catch(e){alert(e.message)}});
+    await withBusy(button,async()=>{
+      try{
+        const x=await api('/api/sign/radar/empty',{method:'POST',body:JSON.stringify({rollcall_id:rid,code:''})});
+        renderSignResults(x,$('scanResult'),{title:'雷达签到结果（空答案）'});
+        if(x&&x.ok===false&&!(x.results||[]).length)toast(x.message||'雷达签到失败','bad');
+        signSummary(x,'雷达签到');
+        if(sessionExpiredIn(x))refreshAccountStatus(false);
+      }catch(e){showFailure(e,'雷达签到失败')}
+    });
     return;
   }
-  const probes=$('probePoints').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean).map(x=>{const [latitude,longitude]=x.split(',').map(Number);return {latitude,longitude}});
-  if(probes.length<3)return alert('请先在签到设置中填写至少三个探测点');
-  await withBusy(button,async()=>{try{const x=await api('/api/sign/radar/triangulate',{method:'POST',body:JSON.stringify({rollcall_id:rid,probes})});renderResults(x,$('scanResult'));if(x&&x.ok===false)toast(x.message||'雷达签到失败','bad');signSummary(x,'雷达签到');if(sessionExpiredIn(x))refreshAccountStatus()}catch(e){alert(e.message)}});
+  const probes=readProbes();
+  if(probes.length<3){toast('请先在签到设置中填写至少三个探测点','bad');return}
+  await withBusy(button,async()=>{
+    try{
+      const x=await api('/api/sign/radar/triangulate',{method:'POST',body:JSON.stringify({rollcall_id:rid,probes})});
+      renderSignResults(x,$('scanResult'),{title:'雷达三点定位签到结果'});
+      if(x&&x.ok===false&&!(x.results||[]).length)toast(x.message||'雷达签到失败','bad');
+      signSummary(x,'雷达签到');
+      if(sessionExpiredIn(x))refreshAccountStatus(false);
+    }catch(e){showFailure(e,'雷达签到失败')}
+  });
 }
+
+// ==== 单账号签到：自动数字签到 / 位置签到 ====
+async function accountNumberSign(encoded,button){
+  const id=decodeURIComponent(encoded);
+  const name=accountLabelById(id);
+  const rollcall=await chooseRollcall('number');
+  if(rollcall===null||rollcall===undefined)return;
+  let code='';
+  if(!$('autoNumber').checked){
+    const input=prompt(`为「${name}」输入「${rollcallLabel(rollcall)}」的 4 位数字签到码`,lastNumberCode||'');
+    if(input===null)return;
+    code=String(input).trim();
+    if(!/^\d{3,8}$/.test(code)){toast('数字签到码必须是 3-8 位数字','bad');return}
+    lastNumberCode=code;
+  }
+  await withBusy(button,async()=>{
+    let x=null;
+    try{
+      x=await api('/api/sign/number/account',{method:'POST',body:JSON.stringify({account_id:id,rollcall_id:rollcall.id,code})});
+    }catch(e){
+      if(quietError(e))return;
+      const failure=failureResult(e,id);
+      reportOneSign(id,failure,'自动数字签到');
+      toast(`${name}：${failure.message}`,'bad');
+      return;
+    }
+    const result=normalizeSign(x,id);
+    reportOneSign(id,result,'自动数字签到');
+    toast(`${name}：${result.message||(result.success?'数字签到成功':'数字签到失败')}`,result.success?'ok':'bad');
+    if(result.success)loadAccounts();
+  });
+}
+async function accountRadarSign(encoded,button){
+  const id=decodeURIComponent(encoded);
+  const name=accountLabelById(id);
+  const rollcall=await chooseRollcall('radar');
+  if(rollcall===null||rollcall===undefined)return;
+  const emptyScheme=$('radarScheme').value==='empty';
+  let target=null;
+  if(!emptyScheme){
+    target=askRadarTarget(name);
+    if(!target)return;
+  }
+  await withBusy(button,async()=>{
+    let x=null;
+    try{
+      x=emptyScheme
+        ?await api('/api/sign/radar/empty/account',{method:'POST',body:JSON.stringify({account_id:id,rollcall_id:rollcall.id})})
+        :await api('/api/sign/radar/account',{method:'POST',body:JSON.stringify({account_id:id,rollcall_id:rollcall.id,latitude:target.latitude,longitude:target.longitude})});
+    }catch(e){
+      if(quietError(e))return;
+      const failure=failureResult(e,id);
+      reportOneSign(id,failure,emptyScheme?'位置签到（空答案）':'位置签到');
+      toast(`${name}：${failure.message}`,'bad');
+      return;
+    }
+    const result=normalizeSign(x,id);
+    const label=emptyScheme?'位置签到（空答案）':'位置签到';
+    reportOneSign(id,result,label);
+    toast(`${name}：${result.message||(result.success?'位置签到成功':'位置签到失败')}`,result.success?'ok':'bad');
+    if(result.success)loadAccounts();
+  });
+}
+
+// ==== 二维码批量签到（分批提交 + 失败账号逐条补签） ====
+// 二维码几秒到十几秒就换一张，拼的是"在过期前把所有账号的请求都发出去"。
+// 后端对二维码类已经放开并发（QR_BATCH_SIZE=8）且不排队等错峰，所以这里每批发 8 个、
+// 批间几乎不留间隔：账号多时总耗时从"账号数 × 单次往返"降到"批数 × 单次往返"。
+// 一批失败只影响这一批，全部批次跑完再统一展示并允许逐个补签。
+const QR_BATCH_SIZE=8;
+const QR_BATCH_GAP_MS=120;
+function chunkList(list,size){const out=[];for(let i=0;i<list.length;i+=size)out.push(list.slice(i,i+size));return out}
+function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
+function qrTally(ids,results,failureReasons){
+  let ok=0,bad=0;
+  ids.forEach(id=>{
+    const row=results.get(id);
+    if(row){if(row.success)ok++;else bad++;return}
+    if(failureReasons.has(id))bad++;
+  });
+  return {ok,bad};
+}
+async function submitQr(){
+  const raw=$('qr').value.trim();
+  if(!raw){toast('先扫码或粘贴二维码内容','bad');return}
+  const enabled=accountCache.filter(a=>a.enabled);
+  const disabledCount=accountCache.filter(a=>!a.enabled).length;
+  if(accountCache.length&&!enabled.length){toast('没有启用的账号，无法批量签到','bad');return}
+  lastQrRaw=raw;
+  const ids=enabled.map(a=>a.id).filter(Boolean);
+  const total=ids.length;
+  const batches=ids.length?chunkList(ids,QR_BATCH_SIZE):[null];  // 账号还没加载时退回一次性提交
+  await withBusy($('signBtn'),async()=>{
+    const results=new Map();          // account_id -> 逐账号结果
+    const failureReasons=new Map();   // account_id -> 整批失败原因
+    let done=0;
+    for(let index=0;index<batches.length;index++){
+      const batch=batches[index];
+      const tally=qrTally(ids,results,failureReasons);
+      const progress=total
+        ?`正在签到 ${Math.min(done+(batch?batch.length:0),total)}/${total}…（已成功 ${tally.ok}，失败 ${tally.bad}）`
+        :'正在为启用账号签到…';
+      $('scanHint').textContent=progress+' 分批提交中，请勿重复点击或关闭页面';
+      renderPending($('scanResult'),progress);
+      try{
+        // 不设超时；后端按 account_ids 只签这一批
+        const x=await api('/api/sign/qr',{method:'POST',body:JSON.stringify(batch?{raw,account_ids:batch}:{raw})});
+        signList(x).forEach(row=>{
+          const id=row&&row.account_id?row.account_id:'';
+          if(!id)return;
+          const prev=results.get(id);
+          // 旧后端可能忽略 account_ids 而返回全部账号：同一账号成功优先，避免重复累加
+          if(!prev||(!prev.success&&row.success))results.set(id,row);
+        });
+      }catch(e){
+        if(quietError(e)){
+          (batch||ids).forEach(id=>failureReasons.set(id,'登录已过期，请重新登录后重试'));
+          break;
+        }
+        const reason='本批请求未完成：'+errText(e)+'；可点「补签」单独重试';
+        if(batch)batch.forEach(id=>failureReasons.set(id,reason));
+        else ids.forEach(id=>failureReasons.set(id,reason));
+        toast(`第 ${index+1}/${batches.length} 批签到失败：${errText(e)}，已继续下一批`,'bad');
+      }
+      done+=batch?batch.length:0;
+      if(index<batches.length-1&&QR_BATCH_GAP_MS)await sleep(QR_BATCH_GAP_MS);
+    }
+    if(!loggedIn)return;   // 中途会话失效已经回登录页，不再渲染
+    let rows;
+    if(ids.length){
+      rows=ids.map(id=>{
+        const row=results.get(id);
+        if(row)return row;
+        return {account_id:id,success:false,message:failureReasons.get(id)||'这一批没有拿到结果（可点「补签」重试）',distance:null};
+      });
+      results.forEach((row,id)=>{if(!ids.includes(id))rows.push(row)});
+    }else rows=[...results.values()];
+    renderSignResults(rows,$('scanResult'),{title:'二维码签到结果',retry:true});
+    signSummary(rows,'二维码签到');
+    const tally=qrTally(ids.length?ids:rows.map(r=>r.account_id),results,failureReasons);
+    if(disabledCount)toast(`${disabledCount} 个停用账号不参与本次签到`);
+    if(sessionExpiredIn(rows))refreshAccountStatus(false);
+    loadRollcalls();
+    $('scanHint').textContent=`二维码签到完成：成功 ${tally.ok} 个，失败 ${tally.bad} 个。失败的账号可直接点「补签」单独重试。`;
+    if(tally.bad)toast(`二维码签到：成功 ${tally.ok}，失败 ${tally.bad}（可逐个补签）`,'bad');
+  });
+}
+async function retryQrSign(button){
+  const id=(button&&button.dataset&&button.dataset.aid)||'';
+  if(!id){toast('缺少账号标识，无法补签','bad');return}
+  const raw=lastQrRaw||$('qr').value.trim();
+  if(!raw){toast('请先扫码或粘贴二维码内容，再补签','bad');return}
+  const row=(button&&button.closest)?button.closest('.sign-row'):null;
+  const name=accountLabelById(id);
+  await withBusy(button,async()=>{
+    let x=null;
+    try{x=await api('/api/sign/qr/account',{method:'POST',body:JSON.stringify({account_id:id,raw})})}
+    catch(e){
+      if(quietError(e))return;
+      const failure=failureResult(e,id);
+      updateSignRow(row,failure);
+      toast(`${name}：${failure.message}`,'bad');
+      return;
+    }
+    const result=normalizeSign(x,id);
+    updateSignRow(row,result);
+    toast(`${name}：${result.message||(result.success?'补签成功':'补签失败')}`,result.success?'ok':'bad');
+    if(result.success)loadAccounts();
+  });
+}
+
+// ==== 扫码 / 摄像头接线 ====
 $('signBtn').onclick=submitQr;
 $('scanBtn').onclick=async()=>{if(scanActive||$('scanBtn').disabled)return;setBusy($('scanBtn'),true);try{const [cameraStream]=await Promise.all([getCameraStream(),getNativeDetector()]);stream=cameraStream;const video=$('video');video.setAttribute('playsinline','');video.setAttribute('webkit-playsinline','');video.setAttribute('autoplay','');video.playsInline=true;video.autoplay=true;video.muted=true;video.srcObject=stream;try{await video.play()}catch(playError){/* iOS 偶发拒绝自动播放，静音循环会继续尝试，下面提示用户点一下画面 */}scanActive=true;scanStrategy=0;lastScanAt=0;await configureCameraControls(stream.getVideoTracks&&stream.getVideoTracks()[0]);$('stopScanBtn').disabled=false;$('scanHint').textContent='正在扫描，让二维码完整出现在画面内即可，不必居中…';scanVideoFrame();setTimeout(()=>{if(scanActive&&(!video.videoWidth||video.readyState<2))$('scanHint').textContent='画面没有出现？点一下视频区域再试，或改用「选择二维码图片」'},3000)}catch(e){stopCameraScan();$('scanHint').textContent='无法启动扫码：'+e.message}finally{setBusy($('scanBtn'),false)}};
 $('stopScanBtn').onclick=()=>{stopCameraScan();$('scanHint').textContent='已停止摄像头扫码。'};
@@ -265,11 +904,21 @@ $('video').addEventListener('loadedmetadata',updateScanGuideSize);
 $('video').onclick=()=>{const video=$('video');if(scanActive&&video.paused){video.play().catch(()=>{})}};
 $('imageBtn').onclick=()=>$('qrImage').click();
 $('qrImage').onchange=async event=>{const file=event.target.files&&event.target.files[0];if(!file)return;stopCameraScan();await withBusy($('imageBtn'),async()=>{try{const raw=await decodeImageFile(file);if(!raw)throw Error('图片中没有识别到二维码，请换一张二维码更完整清晰的照片');$('qr').value=raw;$('scanHint').textContent='二维码图片已识别，正在提交签到…';await submitQr()}catch(e){$('scanHint').textContent='图片扫码失败：'+e.message}finally{event.target.value=''}})};
-function renderResults(x,node){node.textContent=JSON.stringify(x,null,2)}function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-api('/api/session').then(showLogin).catch(()=>{});
-setInterval(()=>{if(loggedIn)loadRollcalls()},10000);
-// 点名轮询会顺带刷新服务端缓存的会话状态，这里定期把账号状态同步到页面上。
-setInterval(()=>{if(loggedIn)loadAccounts()},30000);
+
+// ==== 启动 ====
+(async function boot(){
+  // 页面加载时的会话探测：401 只说明"还没登录"，不弹"过期"提示，也不能覆盖随后的登录流程。
+  const epoch=authEpoch;
+  try{
+    await api('/api/session',{authMode:'silent'});
+    if(loggedIn||epoch!==authEpoch)return;   // 期间用户已经登录成功，丢弃这次探测结果
+    await enterApp();
+  }catch(e){
+    if(loggedIn||epoch!==authEpoch)return;
+    leaveApp('');
+    if(e&&e.kind==='network')toast('无法连接服务器：'+errText(e),'bad');
+  }
+})();
 $('admin').addEventListener('keydown',e=>{if(e.key==='Enter')$('adminBtn').click()});
 $('pass').addEventListener('keydown',e=>{if(e.key==='Enter')$('schoolBtn').click()});
 window.addEventListener('offline',()=>toast('网络已断开，签到请求会失败','bad'));

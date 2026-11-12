@@ -19,11 +19,50 @@ AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/151.0.7922.199 Mobile 
 TronClass/common";
 
 /// 签到结果。[distance] 只在雷达签到被判"太远"时返回，单位米（服务器算的）。
+///
+/// [status] / [error_code] / [http_code] 是上游原始判定：HTTP 200 但 status 是
+/// `absent`、`device_used` 之类的响应以前会被压成一句"签到失败"，前端无法区分
+/// "设备被占用""已过期""不在范围"。这里原样带出来，由调用方决定怎么展示。
 #[derive(Serialize, Deserialize)]
 pub struct SignResult {
     pub success: bool,
     pub message: String,
     pub distance: Option<f64>,
+    /// 上游响应里的 `status` 字段（没有就是空串）。
+    #[serde(default)]
+    pub status: String,
+    /// 上游响应里的 `error_code` 字段（雷达类失败才有）。
+    #[serde(default)]
+    pub error_code: String,
+    /// 上游 HTTP 状态码；0 表示没拿到响应（网络错误/超时）。
+    #[serde(default)]
+    pub http_code: u16,
+}
+
+impl SignResult {
+    /// 成功结果（`message` 默认"签到成功"）。
+    pub fn ok(message: impl Into<String>) -> Self {
+        Self {
+            success: true,
+            message: message.into(),
+            distance: None,
+            status: String::new(),
+            error_code: String::new(),
+            http_code: 200,
+        }
+    }
+
+    /// 失败结果。上游细节由调用方按需补到 [status]/[error_code]/[http_code]。
+    pub fn fail(message: impl Into<String>) -> Self {
+        Self {
+            success: false,
+            message: message.into(),
+            distance: None,
+            status: String::new(),
+            error_code: String::new(),
+            http_code: 0,
+        }
+    }
 }
 
 /// 从点名里直接读出的数字签到码。
@@ -153,17 +192,33 @@ pub fn refresh_session(cas_cookie: String) -> LoginResult {
     }
 }
 
+/// 单次上游请求的总超时。没有它时 `spawn_blocking` 里的连接会一直挂着：
+/// 调用方（server）那边 45s 就"放弃等待"返回了，后台却还有一个在途请求，
+/// 用户点重试就可能对同一场点名并发提交两次（重复签到/触发风控）。
+/// 15s 比 server 侧的单账号预算(45s)短，正常情况下不会误杀。
+const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+fn client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(REQUEST_TIMEOUT)
+        .build()
+        .unwrap_or_default()
+}
+
+/// 扫码原文里编码的 rollcall_id。调用方用它校验"这张二维码是不是这场点名的"：
+/// sign_qr 的提交地址取自二维码本身，拿 A 课的二维码去签 B 课会静默签错课。
+pub fn qr_rollcall_id(raw_qr: &str) -> Option<String> {
+    qr::extract_sign_data(raw_qr)
+        .ok()
+        .map(|parsed| parsed.rollcall_id)
+        .filter(|id| !id.trim().is_empty())
+}
+
 /// 扫码原文 -> 解析 -> 二维码签到接口 -> 结果。
 pub fn sign_qr(cookie: String, device_id: String, raw_qr: String) -> SignResult {
     let parsed = match qr::extract_sign_data(&raw_qr) {
         Ok(p) => p,
-        Err(e) => {
-            return SignResult {
-                success: false,
-                message: e,
-                distance: None,
-            }
-        }
+        Err(e) => return SignResult::fail(e),
     };
 
     let url = format!(
@@ -171,7 +226,7 @@ pub fn sign_qr(cookie: String, device_id: String, raw_qr: String) -> SignResult 
         parsed.rollcall_id
     );
     let body = serde_json::json!({ "data": parsed.data, "deviceId": device_id });
-    let req = authed(reqwest::Client::new().put(&url), &cookie).json(&body);
+    let req = authed(client().put(&url), &cookie).json(&body);
     interpret(runtime().block_on(send(req)))
 }
 
@@ -184,7 +239,7 @@ pub fn sign_number(
 ) -> SignResult {
     let url = format!("{API_BASE}/api/rollcall/{rollcall_id}/answer_number_rollcall");
     let body = serde_json::json!({ "numberCode": number_code, "deviceId": device_id });
-    let req = authed(reqwest::Client::new().put(&url), &cookie).json(&body);
+    let req = authed(client().put(&url), &cookie).json(&body);
     interpret(runtime().block_on(send(req)))
 }
 
@@ -208,7 +263,7 @@ pub fn sign_radar(
         "altitudeAccuracy": null,
         "heading": null,
     });
-    let req = authed(reqwest::Client::new().put(&url), &cookie).json(&body);
+    let req = authed(client().put(&url), &cookie).json(&body);
     interpret(runtime().block_on(send(req)))
 }
 
@@ -216,14 +271,14 @@ pub fn sign_radar(
 /// 服务器可能直接判到场，调用方需再 verify_signed 确认。
 pub fn sign_radar_empty(cookie: String, rollcall_id: String) -> SignResult {
     let url = format!("{API_BASE}/api/rollcall/{rollcall_id}/answer");
-    let req = authed(reqwest::Client::new().put(&url), &cookie).json(&serde_json::json!({}));
+    let req = authed(client().put(&url), &cookie).json(&serde_json::json!({}));
     interpret(runtime().block_on(send(req)))
 }
 
 /// 直接从点名里读数字签到码：`GET /api/rollcall/{id}/student_rollcalls`。
 pub fn get_number_code(cookie: String, rollcall_id: String) -> NumberCodeResult {
     let url = format!("{API_BASE}/api/rollcall/{rollcall_id}/student_rollcalls");
-    let req = authed(reqwest::Client::new().get(&url), &cookie);
+    let req = authed(client().get(&url), &cookie);
     match runtime().block_on(send(req)) {
         Ok((code, text)) => {
             if code == 401 || code == 403 {
@@ -305,7 +360,7 @@ pub fn solve_radar_target(points: Vec<GeoPoint>, distances: Vec<f64>) -> RadarTa
 /// 取当前账号的点名列表。
 pub fn get_rollcalls(cookie: String) -> RollcallsResult {
     let url = format!("{API_BASE}/api/radar/rollcalls?api_version=1.1.0");
-    let req = authed(reqwest::Client::new().get(&url), &cookie)
+    let req = authed(client().get(&url), &cookie)
         .timeout(std::time::Duration::from_secs(10));
     match runtime().block_on(send(req)) {
         Ok((code, text)) => parse_rollcalls(code, &text),
@@ -320,7 +375,7 @@ pub fn get_rollcalls(cookie: String) -> RollcallsResult {
 /// 取当前账号信息：`GET /api/profile`，顺便验证会话还有效。
 pub fn get_account(cookie: String) -> AccountInfo {
     let url = format!("{API_BASE}/api/profile");
-    let req = authed(reqwest::Client::new().get(&url), &cookie);
+    let req = authed(client().get(&url), &cookie);
     match runtime().block_on(send(req)) {
         Ok((code, text)) => parse_account(code, &text),
         Err(e) => AccountInfo {
@@ -342,6 +397,7 @@ async fn send(req: reqwest::RequestBuilder) -> Result<(u16, String), reqwest::Er
 
 /// 签到响应统一解读：200 且（status 是 on_call/on_call_fine 或 success=true）算成功。
 /// 雷达失败时把服务器算的 distance 带回去（三边定位要用）。
+/// 无论成功失败都把上游 status / error_code / HTTP 码带出去，前端才能区分失败类型。
 fn interpret(result: Result<(u16, String), reqwest::Error>) -> SignResult {
     match result {
         Ok((code, text)) => {
@@ -349,27 +405,23 @@ fn interpret(result: Result<(u16, String), reqwest::Error>) -> SignResult {
             let status = value.get("status").and_then(|v| v.as_str()).unwrap_or("");
             let success_flag = value.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
             let distance = value.get("distance").and_then(|v| v.as_f64());
-            let ok = code == 200
-                && (matches!(status, "on_call" | "on_call_fine") || success_flag);
-            if ok {
-                SignResult {
-                    success: true,
-                    message: "签到成功".to_string(),
-                    distance: None,
-                }
+            let error_code = value.get("error_code").and_then(|v| v.as_str()).unwrap_or("");
+            let ok =
+                code == 200 && (matches!(status, "on_call" | "on_call_fine") || success_flag);
+            let mut out = if ok {
+                SignResult::ok("签到成功")
             } else {
-                SignResult {
-                    success: false,
-                    message: failure_message(code, &value),
-                    distance,
-                }
+                SignResult::fail(failure_message(code, &value))
+            };
+            if !ok {
+                out.distance = distance;
             }
+            out.status = status.to_string();
+            out.error_code = error_code.to_string();
+            out.http_code = code;
+            out
         }
-        Err(e) => SignResult {
-            success: false,
-            message: format!("网络错误：{e}"),
-            distance: None,
-        },
+        Err(e) => SignResult::fail(format!("网络错误：{e}")),
     }
 }
 
