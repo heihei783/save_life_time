@@ -40,8 +40,12 @@ const MAX_SESSION_TOKENS: usize = 8;
 /// 单次签到请求里"错峰"累计等待的软预算（秒）。超过就不再等，直接连发剩余账号：
 /// Nginx 默认 proxy_read_timeout 是 60s，错峰设成 10~30s 时第 4 个账号就会被切断。
 const STAGGER_BUDGET_SECONDS: u64 = 30;
-/// 单批签到里同时跑几个账号。默认 1 = 完全串行，学校侧风控对并发最敏感。
-const SIGN_BATCH_SIZE: usize = 1;
+/// 数字/位置签到一次同时跑几个账号。
+///
+/// 原来是 1（完全串行），但账号一多总耗时就是"账号数 × 往返时间"，很容易把
+/// 反代的 60s 读超时撞满，也拖慢整场签到。取 3 是折中：比串行快得多，
+/// 又不至于像二维码那样一次全发出去而触发学校侧风控。
+const SIGN_BATCH_SIZE: usize = 3;
 /// 二维码签到的并发度。
 ///
 /// 二维码几秒到十几秒就换一张，串行 + 错峰根本签不完（账号越多越明显，
@@ -67,6 +71,9 @@ const REFRESH_DEADLINE_SECONDS: u64 = 90;
 const MAX_ALL_SIGN_JOBS: usize = 40;
 /// 跨课程一键签到的整体预算（秒）。超过后未执行的任务记为超时，避免请求被反代整条切断。
 const ALL_SIGN_DEADLINE_SECONDS: u64 = 150;
+/// 同一场点名最多自动尝试几次。失败会留待下一轮重试，但不能无限重试
+/// （重复提交会触发上游 device_used / 风控）。
+const AUTO_SIGN_MAX_ATTEMPTS: u32 = 3;
 
 #[derive(Clone)]
 struct AppState {
@@ -93,6 +100,9 @@ struct Store {
     accounts: Vec<Account>,
     #[serde(default)]
     settings: Settings,
+    /// 后台自动签到的运行状态（已处理点名、最近记录）。
+    #[serde(default)]
+    auto_sign: AutoSignState,
 }
 
 impl Store {
@@ -127,6 +137,23 @@ struct Settings {
     auto_number: bool,
     radar_scheme: String,
     probes: Vec<RadarProbe>,
+    /// 后台自动签到总开关。开启后服务端自己定时拉点名，发现新的数字/雷达点名就签，
+    /// 不需要人守在页面上点按钮。
+    #[serde(default)]
+    auto_sign_enabled: bool,
+    /// 自动签到是否处理数字类点名。
+    #[serde(default)]
+    auto_sign_number: bool,
+    /// 自动签到是否处理雷达/位置类点名。
+    #[serde(default)]
+    auto_sign_radar: bool,
+    /// 后台轮询间隔（秒）。
+    #[serde(default = "default_auto_sign_interval")]
+    auto_sign_interval_seconds: u64,
+}
+
+fn default_auto_sign_interval() -> u64 {
+    20
 }
 
 impl Default for Settings {
@@ -138,8 +165,54 @@ impl Default for Settings {
             auto_number: false,
             radar_scheme: "trilateration".into(),
             probes: Vec::new(),
+            // 自动签到默认关闭：它会在后台真的替用户签到，必须由用户显式开启。
+            auto_sign_enabled: false,
+            auto_sign_number: true,
+            auto_sign_radar: true,
+            auto_sign_interval_seconds: default_auto_sign_interval(),
         }
     }
+}
+
+/// 后台自动签到的运行状态（持久化，重启后不会把已处理过的点名再签一遍）。
+#[derive(Serialize, Deserialize, Clone, Default)]
+struct AutoSignState {
+    /// rollcall_id -> 处理记录。
+    #[serde(default)]
+    handled: HashMap<String, HandledEntry>,
+    #[serde(default)]
+    last_run_at: u64,
+    #[serde(default)]
+    last_error: String,
+    /// 最近若干条自动签到记录，供网页展示。
+    #[serde(default)]
+    log: Vec<AutoSignLog>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+struct HandledEntry {
+    /// 首次处理时间（Unix 秒）。
+    #[serde(default)]
+    at: u64,
+    /// 已经自动尝试过几次。
+    #[serde(default)]
+    attempts: u32,
+    /// 已经全部签成功，不再处理。
+    #[serde(default)]
+    done: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct AutoSignLog {
+    at: u64,
+    rollcall_id: String,
+    course_title: String,
+    title: String,
+    kind: String,
+    account_id: String,
+    account_name: String,
+    success: bool,
+    message: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -176,6 +249,15 @@ struct SettingsInput {
     auto_number: bool,
     radar_scheme: String,
     probes: Vec<RadarProbe>,
+    /// 自动签到开关；省略表示保持原值（老前端不会因为少了字段就被关掉）。
+    #[serde(default)]
+    auto_sign_enabled: Option<bool>,
+    #[serde(default)]
+    auto_sign_number: Option<bool>,
+    #[serde(default)]
+    auto_sign_radar: Option<bool>,
+    #[serde(default)]
+    auto_sign_interval_seconds: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -1327,12 +1409,32 @@ async fn settings_put(
                 (StatusCode::BAD_REQUEST, json_result(false, "设置范围无效")).into_response(),
             );
         }
+        // 轮询间隔限制在 5~300 秒：太小会把学校接口打成风控，太大容易错过短时点名。
+        let interval = req.auto_sign_interval_seconds.unwrap_or(
+            s.settings.auto_sign_interval_seconds,
+        );
+        if !(5..=300).contains(&interval) {
+            return (
+                false,
+                (
+                    StatusCode::BAD_REQUEST,
+                    json_result(false, "自动签到轮询间隔必须在 5~300 秒之间"),
+                )
+                    .into_response(),
+            );
+        }
+        // 先取出旧值再整体赋值：省得在同一个表达式里既读又写 s.settings。
+        let previous = s.settings.clone();
         s.settings = Settings {
             min_delay_seconds: req.min_delay_seconds,
             max_delay_seconds: req.max_delay_seconds,
             auto_number: req.auto_number,
             radar_scheme: req.radar_scheme,
             probes: req.probes,
+            auto_sign_enabled: req.auto_sign_enabled.unwrap_or(previous.auto_sign_enabled),
+            auto_sign_number: req.auto_sign_number.unwrap_or(previous.auto_sign_number),
+            auto_sign_radar: req.auto_sign_radar.unwrap_or(previous.auto_sign_radar),
+            auto_sign_interval_seconds: interval,
         };
         (true, json_result(true, "设置已保存").into_response())
     })
@@ -2676,6 +2778,490 @@ async fn sign_all(
     .into_response()
 }
 
+/// 诊断用请求：把 rollcall_id 和 data 分开指定，直接打上游。
+#[derive(Deserialize)]
+struct QrProbeReq {
+    account_id: String,
+    /// 目标点名。可以和二维码里编码的那场不同——这正是要测的东西。
+    rollcall_id: String,
+    /// 二维码里的 data（时间戳+签名），原样传。
+    data: String,
+}
+
+/// POST /api/sign/qr/probe —— 协议诊断。
+///
+/// 把 `rollcall_id` 和 `data` 分开提交，并把上游**原始响应**（状态码 + body）返回，
+/// 用来判断服务端是否把签名绑定在 rollcallId 上。不写状态、不改账号会话。
+async fn qr_probe(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<QrProbeReq>,
+) -> Response {
+    if !authorized(&st, &headers) {
+        return unauthorized();
+    }
+    let account_id = req.account_id.trim().to_string();
+    let rollcall_id = req.rollcall_id.trim().to_string();
+    let data = req.data.trim().to_string();
+    if let Err(message) = validate_sign_target(&account_id, &rollcall_id) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(sign_error_json(&account_id, "invalid_request", &message, false)),
+        )
+            .into_response();
+    }
+    if data.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(sign_error_json(
+                &account_id,
+                "invalid_request",
+                "data 不能为空",
+                false,
+            )),
+        )
+            .into_response();
+    }
+    let (mut account, _settings) = match find_account(&st, &account_id, false) {
+        Ok(x) => x,
+        Err(r) => return r,
+    };
+    ensure_account_device(&st, &mut account);
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(SIGN_JOB_TIMEOUT_SECONDS),
+        tokio::task::spawn_blocking({
+            let cookie = account.cookie.clone();
+            let device = account.device_id.clone();
+            let rid = rollcall_id.clone();
+            let payload = serde_json::json!(data);
+            move || core::sign_qr_raw_probe(cookie, device, rid, payload)
+        }),
+    )
+    .await;
+    match outcome {
+        Ok(Ok(probe)) => Json(serde_json::json!({
+            "ok": true,
+            "account_id": account_id,
+            "rollcall_id": rollcall_id,
+            "data_length": data.len(),
+            "upstream_code": probe.http_code,
+            "upstream_body": probe.body,
+        }))
+        .into_response(),
+        Ok(Err(e)) => (
+            StatusCode::BAD_GATEWAY,
+            Json(sign_error_json(
+                &account_id,
+                "internal_error",
+                &format!("探测任务失败：{e}"),
+                false,
+            )),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::GATEWAY_TIMEOUT,
+            Json(sign_error_json(
+                &account_id,
+                "timeout",
+                "探测超时，上游没有响应",
+                false,
+            )),
+        )
+            .into_response(),
+    }
+}
+
+/// 后台自动签到：按设置里的间隔轮询点名列表，发现新的数字/雷达点名就自动签。
+///
+/// 关键约束：
+/// - 只有 `auto_sign_enabled` 打开时才干活，默认关闭。
+/// - 同一场点名最多自动尝试 [AUTO_SIGN_MAX_ATTEMPTS] 次，成功后标记 done，
+///   避免每轮都重复提交（重复提交会触发上游 device_used / 风控）。
+/// - 单轮内仍然串行 + 错峰；雷达类并发抢时间（和手动签到一致）。
+async fn auto_sign_loop(state: AppState) {
+    loop {
+        let (enabled, interval) = read_store(&state, |s| {
+            (
+                s.settings.auto_sign_enabled,
+                s.settings.auto_sign_interval_seconds.clamp(5, 300),
+            )
+        });
+        if enabled {
+            match auto_sign_round(&state).await {
+                Ok(()) => {}
+                Err(message) => {
+                    eprintln!("自动签到本轮失败：{message}");
+                    commit(&state, |s| {
+                        s.auto_sign.last_error = message;
+                        s.auto_sign.last_run_at = unix_now();
+                        (true, ())
+                    });
+                }
+            }
+        }
+        tokio::time::sleep(Duration::from_secs(interval)).await;
+    }
+}
+
+/// 跑一轮自动签到。返回 Err 表示这一轮整体失败（比如拿不到点名）。
+async fn auto_sign_round(state: &AppState) -> Result<(), String> {
+    let (accounts, settings) = read_store(state, |s| {
+        (
+            s.accounts
+                .iter()
+                .filter(|a| a.enabled)
+                .cloned()
+                .collect::<Vec<_>>(),
+            s.settings.clone(),
+        )
+    });
+    if accounts.is_empty() {
+        commit(state, |s| {
+            s.auto_sign.last_run_at = unix_now();
+            s.auto_sign.last_error.clear();
+            (true, ())
+        });
+        return Ok(());
+    }
+
+    // 1. 并发拉每个账号的点名
+    let handles: Vec<_> = accounts
+        .iter()
+        .map(|a| {
+            let id = a.id.clone();
+            let name = a.name.clone();
+            let cookie = a.cookie.clone();
+            (
+                id,
+                name,
+                tokio::task::spawn_blocking(move || core::get_rollcalls(cookie)),
+            )
+        })
+        .collect();
+
+    let mut grouped: HashMap<String, PendingRollcall> = HashMap::new();
+    let mut probes = Vec::new();
+    for (id, name, handle) in handles {
+        let r: RollcallsResult = match handle.await {
+            Ok(r) => r,
+            Err(_) => RollcallsResult {
+                ok: false,
+                message: "点名查询任务失败".into(),
+                rollcalls: Vec::new(),
+            },
+        };
+        let probe = if r.ok {
+            SessionProbe::Ok
+        } else if is_session_expired(&r.message) {
+            SessionProbe::Expired(r.message.clone())
+        } else {
+            SessionProbe::Failed(r.message.clone())
+        };
+        probes.push((id.clone(), probe));
+        if !r.ok {
+            continue;
+        }
+        for x in r.rollcalls {
+            let entry = grouped
+                .entry(x.id.clone())
+                .or_insert_with(|| PendingRollcall {
+                    rollcall_id: x.id.clone(),
+                    course_title: x.course_title.clone(),
+                    title: x.title.clone(),
+                    kind: rollcall_kind(x.is_number, x.is_radar),
+                    is_expired: x.is_expired,
+                    accounts: Vec::new(),
+                });
+            if x.is_expired {
+                entry.is_expired = true;
+            }
+            entry.accounts.push((id.clone(), name.clone(), x.status.clone()));
+        }
+    }
+    apply_probes(state, &probes);
+
+    // 2. 挑出"该自动签"的任务
+    let now = unix_now();
+    let handled = read_store(state, |s| s.auto_sign.handled.clone());
+    let mut targets: Vec<AllSignJob> = Vec::new();
+    let mut rollcall_meta: HashMap<String, (String, String, String)> = HashMap::new();
+    let mut ids: Vec<&String> = grouped.keys().collect();
+    ids.sort();
+    for rid in ids {
+        let Some(entry) = grouped.get(rid) else { continue };
+        if entry.is_expired {
+            continue;
+        }
+        // 类型开关
+        let kind_allowed = match entry.kind {
+            RollcallKind::Number => settings.auto_sign_number,
+            RollcallKind::Radar => settings.auto_sign_radar,
+            // 二维码类必须有人扫码，后台不可能自动拿到 data
+            RollcallKind::Qr => false,
+        };
+        if !kind_allowed {
+            continue;
+        }
+        // 已处理过就不再动
+        if let Some(done) = handled.get(rid) {
+            if done.done || done.attempts >= AUTO_SIGN_MAX_ATTEMPTS {
+                continue;
+            }
+        }
+        // 雷达类没有坐标也没配置空答案方案 → 签不了，跳过
+        if entry.kind == RollcallKind::Radar
+            && settings.radar_scheme != "empty"
+            && probe_center(&settings.probes).is_none()
+        {
+            continue;
+        }
+        rollcall_meta.insert(
+            entry.rollcall_id.clone(),
+            (
+                entry.course_title.clone(),
+                entry.title.clone(),
+                entry.kind.as_str().to_string(),
+            ),
+        );
+        for (account_id, account_name, status) in &entry.accounts {
+            if status_is_signed(status) {
+                continue;
+            }
+            targets.push(AllSignJob {
+                rollcall_id: entry.rollcall_id.clone(),
+                kind: entry.kind,
+                account_id: account_id.clone(),
+                account_name: account_name.clone(),
+            });
+        }
+    }
+
+    if targets.is_empty() {
+        commit(state, |s| {
+            s.auto_sign.last_run_at = now;
+            s.auto_sign.last_error.clear();
+            (true, ())
+        });
+        return Ok(());
+    }
+
+    // 3. 准备账号并执行（雷达并发、其余串行错峰）
+    let mut pool: HashMap<String, Account> = accounts
+        .into_iter()
+        .map(|a| (a.id.clone(), a))
+        .collect();
+    for account in pool.values_mut() {
+        ensure_account_device(state, account);
+    }
+    let coords = probe_center(&settings.probes);
+    let radar_scheme = settings.radar_scheme.clone();
+    let auto_number = settings.auto_number;
+
+    let mut prepared: Vec<(AllSignJob, Account)> = Vec::new();
+    for job in targets {
+        if let Some(account) = pool.get(&job.account_id) {
+            prepared.push((job, account.clone()));
+        }
+    }
+
+    let make_job = |job: &AllSignJob, account: &Account| -> Box<dyn FnOnce() -> SignResult + Send> {
+        let account = account.clone();
+        let rollcall_id = job.rollcall_id.clone();
+        let kind = job.kind;
+        let radar_scheme = radar_scheme.clone();
+        Box::new(move || match kind {
+            RollcallKind::Number => {
+                sign_number_one(account, rollcall_id, resolve_number_code("", auto_number))
+            }
+            RollcallKind::Radar => {
+                if radar_scheme == "empty" {
+                    sign_radar_empty_one(account, rollcall_id)
+                } else if let Some((latitude, longitude)) = coords {
+                    sign_radar_one(account, rollcall_id, latitude, longitude)
+                } else {
+                    SignResult::fail("位置签到缺少坐标")
+                }
+            }
+            RollcallKind::Qr => SignResult::fail("二维码类需要人工扫码"),
+        })
+    };
+
+    let mut outcomes: Vec<Option<SignResult>> = (0..prepared.len()).map(|_| None).collect();
+
+    let radar_indexes: Vec<usize> = prepared
+        .iter()
+        .enumerate()
+        .filter(|(_, (job, _))| job.kind == RollcallKind::Radar)
+        .map(|(i, _)| i)
+        .collect();
+    if !radar_indexes.is_empty() {
+        let jobs: Vec<_> = radar_indexes
+            .iter()
+            .map(|&i| make_job(&prepared[i].0, &prepared[i].1))
+            .collect();
+        let mut got = run_batched(
+            QR_BATCH_SIZE,
+            Duration::from_secs(SIGN_JOB_TIMEOUT_SECONDS),
+            None,
+            Vec::new(),
+            jobs,
+        )
+        .await;
+        for (slot, &i) in radar_indexes.iter().enumerate() {
+            outcomes[i] = got.get_mut(slot).and_then(|x| x.take());
+        }
+    }
+
+    let slow_indexes: Vec<usize> = prepared
+        .iter()
+        .enumerate()
+        .filter(|(_, (job, _))| job.kind != RollcallKind::Radar)
+        .map(|(i, _)| i)
+        .collect();
+    if !slow_indexes.is_empty() {
+        let delays = stagger_plan(&settings, slow_indexes.len());
+        let jobs: Vec<_> = slow_indexes
+            .iter()
+            .map(|&i| make_job(&prepared[i].0, &prepared[i].1))
+            .collect();
+        let mut got = run_batched(
+            SIGN_BATCH_SIZE,
+            Duration::from_secs(SIGN_JOB_TIMEOUT_SECONDS),
+            Some(tokio::time::Instant::now() + Duration::from_secs(ALL_SIGN_DEADLINE_SECONDS)),
+            delays,
+            jobs,
+        )
+        .await;
+        for (slot, &i) in slow_indexes.iter().enumerate() {
+            outcomes[i] = got.get_mut(slot).and_then(|x| x.take());
+        }
+    }
+
+    // 4. 汇总：按 rollcall 统计成功情况，决定标记 done 还是留待重试
+    let mut per_rollcall_ok: HashMap<String, (usize, usize)> = HashMap::new();
+    let mut sign_probes = Vec::new();
+    let mut logs: Vec<AutoSignLog> = Vec::new();
+    for (index, outcome) in outcomes.into_iter().enumerate() {
+        let (job, _) = &prepared[index];
+        let result = outcome.unwrap_or_else(|| SignResult::fail(SIGN_TIMEOUT_HINT));
+        register_sign_probe(&mut sign_probes, &job.account_id, &result);
+        let entry = per_rollcall_ok
+            .entry(job.rollcall_id.clone())
+            .or_insert((0, 0));
+        if result.success {
+            entry.0 += 1;
+        } else {
+            entry.1 += 1;
+        }
+        let (course_title, title, kind) = rollcall_meta
+            .get(&job.rollcall_id)
+            .cloned()
+            .unwrap_or_default();
+        logs.push(AutoSignLog {
+            at: now,
+            rollcall_id: job.rollcall_id.clone(),
+            course_title,
+            title,
+            kind,
+            account_id: job.account_id.clone(),
+            account_name: job.account_name.clone(),
+            success: result.success,
+            message: result.message.clone(),
+        });
+    }
+    apply_probes(state, &sign_probes);
+
+    commit(state, |s| {
+        for (rid, (ok, bad)) in &per_rollcall_ok {
+            let entry = s.auto_sign.handled.entry(rid.clone()).or_default();
+            if entry.at == 0 {
+                entry.at = now;
+            }
+            entry.attempts += 1;
+            // 这一场全员成功才算 done；有失败就留待下一轮重试（直到上限）
+            if *bad == 0 && *ok > 0 {
+                entry.done = true;
+            }
+        }
+        s.auto_sign.log.extend(logs);
+        // 只保留最近 200 条，避免状态文件无限膨胀
+        let overflow = s.auto_sign.log.len().saturating_sub(200);
+        if overflow > 0 {
+            s.auto_sign.log.drain(0..overflow);
+        }
+        // handled 也只保留最近 500 条
+        if s.auto_sign.handled.len() > 500 {
+            let mut entries: Vec<(String, u64)> = s
+                .auto_sign
+                .handled
+                .iter()
+                .map(|(k, v)| (k.clone(), v.at))
+                .collect();
+            entries.sort_by_key(|(_, at)| *at);
+            let drop_count = entries.len() - 500;
+            for (key, _) in entries.into_iter().take(drop_count) {
+                s.auto_sign.handled.remove(&key);
+            }
+        }
+        s.auto_sign.last_run_at = now;
+        s.auto_sign.last_error.clear();
+        (true, ())
+    });
+    Ok(())
+}
+
+/// GET /api/auto-sign —— 自动签到状态：开关、上次轮询、最近记录。
+async fn auto_sign_status(State(st): State<AppState>, headers: HeaderMap) -> Response {
+    read_store(&st, |s| {
+        if !auth(&headers, s) {
+            return unauthorized();
+        }
+        Json(serde_json::json!({
+            "ok": true,
+            "enabled": s.settings.auto_sign_enabled,
+            "number": s.settings.auto_sign_number,
+            "radar": s.settings.auto_sign_radar,
+            "interval_seconds": s.settings.auto_sign_interval_seconds,
+            "last_run_at": s.auto_sign.last_run_at,
+            "last_error": s.auto_sign.last_error,
+            "handled_count": s.auto_sign.handled.len(),
+            "recent": s.auto_sign.log.iter().rev().take(50).cloned().collect::<Vec<_>>(),
+        }))
+        .into_response()
+    })
+}
+
+#[derive(Deserialize)]
+struct AutoSignToggle {
+    enabled: bool,
+}
+
+/// POST /api/auto-sign —— 只切开关，不动其它设置（网页上的那个勾选框就用它）。
+async fn auto_sign_toggle(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<AutoSignToggle>,
+) -> Response {
+    commit(&st, |s| {
+        if !auth(&headers, s) {
+            return (false, unauthorized());
+        }
+        s.settings.auto_sign_enabled = req.enabled;
+        (
+            true,
+            json_result(
+                true,
+                if req.enabled {
+                    "自动签到已开启：服务端会定时检查点名并自动签到"
+                } else {
+                    "自动签到已关闭"
+                },
+            )
+            .into_response(),
+        )
+    })
+}
+
 async fn radar_triangulate(
     State(st): State<AppState>,
     headers: HeaderMap,
@@ -2846,8 +3432,12 @@ async fn main() {
         .route("/api/sign/radar/empty", post(radar_empty))
         .route("/api/sign/radar/empty/account", post(radar_empty_account))
         .route("/api/sign/all", post(sign_all))
+        .route("/api/sign/qr/probe", post(qr_probe))
         .route("/api/sign/radar/triangulate", post(radar_triangulate))
-        .with_state(state);
+        .route("/api/auto-sign", get(auto_sign_status).post(auto_sign_toggle))
+        .with_state(state.clone());
+    // 后台自动签到：默认关闭，打开设置里的开关后自己开始轮询。
+    tokio::spawn(auto_sign_loop(state));
     let addr: SocketAddr = env::var("BIND")
         .unwrap_or_else(|_| "0.0.0.0:1112".into())
         .parse()
@@ -3063,6 +3653,7 @@ mod tests {
             auto_number: false,
             radar_scheme: "trilateration".into(),
             probes: Vec::new(),
+            ..Settings::default()
         };
         let plan = stagger_plan(&settings, 5);
         assert_eq!(plan[0], Duration::ZERO, "第一个账号不等");

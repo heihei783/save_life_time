@@ -214,6 +214,41 @@ pub fn qr_rollcall_id(raw_qr: &str) -> Option<String> {
         .filter(|id| !id.trim().is_empty())
 }
 
+/// 诊断用：把任意的 (rollcall_id, data) 组合直接提交给上游，并把**上游原始响应**
+/// 原样带回来（HTTP 状态码 + body）。
+///
+/// 用途是搞清楚服务端到底校验什么：
+/// - 拿 A 课的 data 提交到 B 课的 endpoint，如果成功 → 签名不绑定 rollcallId，
+///   这张码能跨课程用；
+/// - 如果被拒 → 签名绑定了 rollcallId，跨课程不可能。
+///
+/// 与 [sign_qr] 的区别：那个从二维码里读 rollcallId，这个允许两者分开指定。
+pub struct RawProbe {
+    pub http_code: u16,
+    pub body: String,
+}
+
+pub fn sign_qr_raw_probe(
+    cookie: String,
+    device_id: String,
+    rollcall_id: String,
+    data: serde_json::Value,
+) -> RawProbe {
+    let url = format!("{API_BASE}/api/rollcall/{rollcall_id}/answer_qr_rollcall");
+    let body = serde_json::json!({ "data": data, "deviceId": device_id });
+    let req = authed(client().put(&url), &cookie).json(&body);
+    match runtime().block_on(send(req)) {
+        Ok((code, text)) => RawProbe {
+            http_code: code,
+            body: text,
+        },
+        Err(e) => RawProbe {
+            http_code: 0,
+            body: format!("网络错误：{e}"),
+        },
+    }
+}
+
 /// 扫码原文 -> 解析 -> 二维码签到接口 -> 结果。
 pub fn sign_qr(cookie: String, device_id: String, raw_qr: String) -> SignResult {
     let parsed = match qr::extract_sign_data(&raw_qr) {

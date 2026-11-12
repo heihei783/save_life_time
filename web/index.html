@@ -13,7 +13,8 @@
 <h1>winSignIn · 网页签到</h1>
 <section id="auth"><h2>私有站点登录</h2><div class="row"><input id="admin" type="password" placeholder="管理员口令"><button id="adminBtn">进入</button></div><p id="loginNotice" class="bad hidden" role="status"></p></section>
 <main id="app" class="hidden">
-  <section><h2>学校账号</h2><div class="row"><input id="user" placeholder="学号/用户名"><input id="pass" type="password" placeholder="密码"><label><input id="remember" type="checkbox" checked>记住 CAS 会话</label><button id="schoolBtn">账号密码快速登录</button><button class="secondary" id="casWebBtn">学校网页认证（验证码/短信）</button></div><div id="casPanel" class="hidden"><p class="muted">在学校认证页面内完成密码、验证码或短信验证。认证域与管理站点分离；完成后此处会自动保存会话。</p><iframe id="casFrame" title="学校统一认证" style="width:100%;height:70vh;border:1px solid #ccd3e1;border-radius:10px"></iframe></div><div class="row"><button class="secondary" id="refreshBtn">刷新登录会话</button><button class="secondary" id="accountsBtn">检测账号状态</button></div><div id="accountsReport"></div><div id="accounts"></div><div id="accountResult"></div><p class="muted">账号会话保存在服务器数据卷。显示「已过期」的账号请用帐号密码重新登录一次：会更新原账号的会话，不会重复添加。每个账号后面的「自动数字签到」「位置签到」只对这一个账号提交一次，账号被停用也能手动触发。</p></section>
+  <section><h2>学校账号</h2><div class="row"><input id="user" placeholder="学号/用户名"><input id="pass" type="password" placeholder="密码"><label><input id="remember" type="checkbox" checked>记住 CAS 会话</label><button id="schoolBtn">账号密码快速登录</button><button class="secondary" id="casWebBtn">学校网页认证（验证码/短信）</button></div><div id="casPanel" class="hidden"><p class="muted">在学校认证页面内完成密码、验证码或短信验证。认证域与管理站点分离；完成后此处会自动保存会话。</p><iframe id="casFrame" title="学校统一认证" style="width:100%;height:70vh;border:1px solid #ccd3e1;border-radius:10px"></iframe></div><div class="row"><button class="secondary" id="refreshBtn">刷新登录会话</button><button class="secondary" id="accountsBtn">检测账号状态</button></div><div id="accountsReport"></div><div id="accounts"></div><div id="accountResult"></div><p class="muted">账号会话保存在服务器数据卷。显示「已过期」的账号请用帐号密码重新登录一次：会更新原账号的会话，不会重复添加。每个账号后面的「本账号数字签到」「本账号位置签到」是**手动单次**操作，只对这一个账号提交；想让服务器自动签，请打开上面「自动签到」的开关。</p></section>
+  <section><h2>自动签到</h2><div class="row"><label class="switch-row"><input id="autoSignEnabled" type="checkbox"><b>启用自动签到</b></label><span id="autoSignState" class="badge unknown">未开启</span></div><p class="muted">开启后由<b>服务器</b>定时检查点名：一旦发现有正在进行的<b>数字</b>或<b>位置</b>点名，就自动替你签到，不需要守着页面。二维码类必须人工扫码，不在此列。同一场点名最多自动尝试 3 次，成功后不再重复提交。</p><div class="row"><label><input id="autoSignNumber" type="checkbox" checked>自动签数字类</label><label><input id="autoSignRadar" type="checkbox" checked>自动签位置类</label><label>检查间隔 <input id="autoSignInterval" type="number" min="5" max="300" value="20" style="width:5em"> 秒</label></div><p id="autoSignMeta" class="muted"></p><div id="autoSignLog"></div></section>
   <section><h2>签到设置</h2><div class="row"><label>最短错峰秒数 <input id="minDelay" type="number" min="0" max="60" value="0"></label><label>最长错峰秒数 <input id="maxDelay" type="number" min="0" max="60" value="1"></label><label><input id="autoNumber" type="checkbox">自动提取数字签到码</label></div><div class="row"><label>雷达策略 <select id="radarScheme"><option value="trilateration">三点定位</option><option value="empty">空答案提交</option></select></label></div><textarea id="probePoints" rows="3" placeholder="每行一个探测点：纬度,经度；至少三行"></textarea><div><button class="secondary" id="saveSettings">保存设置</button></div></section>
   <section><h2>二维码签到</h2><div class="camera-preview"><video id="video" playsinline webkit-playsinline muted></video><div id="scanGuide" class="scan-guide hidden" aria-hidden="true"></div></div><div id="zoomControls" class="zoom-row hidden"><label for="zoomSlider">缩放</label><input id="zoomSlider" type="range" min="1" max="3" step="0.1" value="1"><output id="zoomValue" class="zoom-value" for="zoomSlider">1.0x</output></div><div class="row"><button id="scanBtn">摄像头扫码</button><button class="secondary" id="stopScanBtn" disabled>停止扫描</button><button class="secondary" id="imageBtn">选择二维码图片</button><input id="qrImage" type="file" accept="image/*" class="hidden"><input id="qr" placeholder="也可粘贴二维码原文"><button id="signBtn">对启用账号签到</button></div><p id="scanHint" class="muted">安卓手机优先用系统自带识别；其他浏览器自动改用多策略识别（自动降采样、局部二值化、分块扫描），二维码不必居中。可用缩放滑块拉近画面，摄像头需要 HTTPS。也可选择二维码图片或粘贴原文。</p><div id="scanResult"></div></section>
   <section><h2>点名列表</h2><div class="row"><button id="rollcallsBtn" class="secondary">立即刷新</button><button id="signAllBtn">一键签到全部课程</button><label class="muted"><input id="forceQr" type="checkbox">二维码不匹配也强行尝试</label><span id="lastRefresh" class="muted"></span></div><p class="muted">「一键签到全部课程」把当前所有进行中的点名，按类型（数字/位置/二维码）对能看到它的账号签到，一个账号有多门课也会全部签掉；已签到的账号、已结束的点名自动跳过。数字类需开启自动取码，位置类需配置探测点（空答案策略除外）。二维码本身编码了它属于哪一场点名，默认只签那一场；勾选「强行尝试」会把这张码也发给其它二维码类点名，由学校服务端决定是否接受。</p><div id="signAllResult"></div><div id="rollcalls"></div></section>
@@ -151,7 +152,7 @@ let rollcallCache=[];       // /api/rollcalls 的结果缓存（单账号签到�
 let lastQrRaw='';           // 最近一次提交的二维码原文，供失败账号补签使用
 let lastNumberCode='';      // 上次输入的数字签到码，下次 prompt 预填
 let casPoll=null;
-let pollRollcallsTimer=null,pollAccountsTimer=null;
+let pollRollcallsTimer=null,pollAccountsTimer=null,pollAutoSignTimer=null;
 // 这两个接口的 401 表示"口令错误/尚未登录"，不是会话过期，绝不能触发登出。
 const AUTH_ENDPOINTS=new Set(['/api/admin/login','/api/session']);
 
@@ -198,10 +199,13 @@ function startPolling(){
   stopPolling();
   pollRollcallsTimer=setInterval(()=>{if(loggedIn)loadRollcalls()},10000);
   pollAccountsTimer=setInterval(()=>{if(loggedIn)loadAccounts()},30000);
+  // 自动签到是服务端在跑，这里定期把它的状态和最近记录同步过来
+  pollAutoSignTimer=setInterval(()=>{if(loggedIn)loadAutoSign()},15000);
 }
 function stopPolling(){
   if(pollRollcallsTimer){clearInterval(pollRollcallsTimer);pollRollcallsTimer=null}
   if(pollAccountsTimer){clearInterval(pollAccountsTimer);pollAccountsTimer=null}
+  if(pollAutoSignTimer){clearInterval(pollAutoSignTimer);pollAutoSignTimer=null}
 }
 function leaveApp(notice){
   if(casPoll){clearInterval(casPoll);casPoll=null}
@@ -239,6 +243,7 @@ async function enterApp(){
   // 首屏请求彼此隔离：任何一个失败（含单个接口报错）都不影响其它请求，也不会把界面踢回登录页。
   // 只有"当前世代的 401"会在 api() 里触发 leaveApp，这也是唯一允许登出的路径。
   await step('设置',loadSettings);
+  await step('自动签到状态',loadAutoSign);
   await step('账号列表',loadAccounts);
   await Promise.all([step('账号状态',()=>refreshAccountStatus(false)),step('点名列表',loadRollcalls)]);
 }
@@ -251,6 +256,10 @@ async function loadSettings(){
   $('autoNumber').checked=Boolean(s&&s.auto_number);
   if(s&&s.radar_scheme)$('radarScheme').value=s.radar_scheme;
   $('probePoints').value=Array.isArray(s&&s.probes)?s.probes.map(p=>`${p.latitude},${p.longitude}`).join('\n'):'';
+  if(s&&s.auto_sign_enabled!==undefined)$('autoSignEnabled').checked=Boolean(s.auto_sign_enabled);
+  if(s&&s.auto_sign_number!==undefined)$('autoSignNumber').checked=Boolean(s.auto_sign_number);
+  if(s&&s.auto_sign_radar!==undefined)$('autoSignRadar').checked=Boolean(s.auto_sign_radar);
+  if(s&&s.auto_sign_interval_seconds)$('autoSignInterval').value=s.auto_sign_interval_seconds;
 }
 function readProbes(){
   return String($('probePoints').value||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean).map(line=>{
@@ -272,6 +281,69 @@ $('saveSettings').onclick=()=>withBusy($('saveSettings'),async()=>{
     toast((x&&x.message)||'设置已保存');
   }catch(e){showFailure(e,'保存设置失败')}
 });
+
+// ==== 自动签到（服务端后台轮询，这里只是开关 + 状态展示）====
+function renderAutoSign(x){
+  const enabled=Boolean(x&&x.enabled);
+  const badge=$('autoSignState');
+  if(badge){
+    badge.textContent=enabled?'运行中':'未开启';
+    badge.className='badge '+(enabled?'ok':'unknown');
+  }
+  const meta=$('autoSignMeta');
+  if(meta){
+    const parts=[];
+    if(x&&x.last_run_at)parts.push('上次检查 '+new Date(x.last_run_at*1000).toLocaleTimeString());
+    else if(enabled)parts.push('等待首次检查…');
+    if(x&&x.handled_count)parts.push(`已处理 ${x.handled_count} 场点名`);
+    if(x&&x.last_error)parts.push('最近错误：'+x.last_error);
+    meta.textContent=parts.join(' · ');
+  }
+  const logNode=$('autoSignLog');
+  if(!logNode)return;
+  const rows=Array.isArray(x&&x.recent)?x.recent:[];
+  if(!rows.length){
+    logNode.innerHTML=enabled?'<p class="muted">还没有自动签到记录。发现数字/位置点名后会自动签到并显示在这里。</p>':'';
+    return;
+  }
+  logNode.innerHTML='<p class="muted">最近自动签到：</p>'+rows.slice(0,20).map(r=>{
+    const badge=r.success?'<span class="badge ok">成功</span>':'<span class="badge bad">失败</span>';
+    const time=r.at?new Date(r.at*1000).toLocaleTimeString():'';
+    const kind=r.kind==='number'?'数字':(r.kind==='radar'?'位置':r.kind);
+    return `<p>${badge} ${escapeHtml(r.course_title||r.rollcall_id)}${r.title?' · '+escapeHtml(r.title):''} <span class="muted">[${kind}] ${escapeHtml(r.account_name||r.account_id)} · ${time}</span>${r.success?'':'<br><span class="bad">'+escapeHtml(r.message||'')+'</span>'}</p>`;
+  }).join('');
+}
+async function loadAutoSign(){
+  try{
+    const x=await api('/api/auto-sign');
+    renderAutoSign(x);
+  }catch(e){if(!quietError(e))console.warn('自动签到状态获取失败',e)}
+}
+async function saveAutoSign(){
+  try{
+    const enabled=$('autoSignEnabled').checked;
+    // 开关单独走 /api/auto-sign，其余三个走 settings，避免互相覆盖
+    await api('/api/auto-sign',{method:'POST',body:JSON.stringify({enabled})});
+    await api('/api/settings',{method:'PUT',body:JSON.stringify({
+      min_delay_seconds:Number($('minDelay').value),
+      max_delay_seconds:Number($('maxDelay').value),
+      auto_number:$('autoNumber').checked,
+      radar_scheme:$('radarScheme').value,
+      probes:readProbes(),
+      auto_sign_enabled:enabled,
+      auto_sign_number:$('autoSignNumber').checked,
+      auto_sign_radar:$('autoSignRadar').checked,
+      auto_sign_interval_seconds:Number($('autoSignInterval').value),
+    })});
+    toast(enabled?'自动签到已开启：服务器会定时检查并自动签到':'自动签到已关闭',enabled?'ok':'ok');
+    loadAutoSign();
+  }catch(e){showFailure(e,'自动签到设置失败')}
+}
+['autoSignEnabled','autoSignNumber','autoSignRadar'].forEach(id=>{
+  const node=$(id);
+  if(node)node.addEventListener('change',saveAutoSign);
+});
+$('autoSignInterval').addEventListener('change',saveAutoSign);
 
 // ==== 登录 / 登出 ====
 $('adminBtn').onclick=()=>withBusy($('adminBtn'),async()=>{
@@ -350,8 +422,8 @@ function renderAccounts(){
       +`<div class="row account-actions">`
       +`<button class="secondary" onclick="toggleAccount('${id}',this)">${a.enabled?'停用':'启用'}</button>`
       +`<button class="secondary" onclick="deleteAccount('${id}',this)">删除</button>`
-      +`<button class="secondary" onclick="accountNumberSign('${id}',this)">自动数字签到</button>`
-      +`<button class="secondary" onclick="accountRadarSign('${id}',this)">位置签到</button>`
+      +`<button class="secondary" onclick="accountNumberSign('${id}',this)">本账号数字签到</button>`
+      +`<button class="secondary" onclick="accountRadarSign('${id}',this)">本账号位置签到</button>`
       +(a.enabled?'':'<span class="muted">（停用中，仍可手动单次签到）</span>')
       +`</div></div>`;
   }).join('');
@@ -724,7 +796,7 @@ async function radarTriangulate(encoded,button){
   });
 }
 
-// ==== 单账号签到：自动数字签到 / 位置签到 ====
+// ==== 单账号手动签到（一次性动作；「自动签到」是上面那个开关）====
 async function accountNumberSign(encoded,button){
   const id=decodeURIComponent(encoded);
   const name=accountLabelById(id);
@@ -745,12 +817,12 @@ async function accountNumberSign(encoded,button){
     }catch(e){
       if(quietError(e))return;
       const failure=failureResult(e,id);
-      reportOneSign(id,failure,'自动数字签到');
+      reportOneSign(id,failure,'本账号数字签到');
       toast(`${name}：${failure.message}`,'bad');
       return;
     }
     const result=normalizeSign(x,id);
-    reportOneSign(id,result,'自动数字签到');
+    reportOneSign(id,result,'本账号数字签到');
     toast(`${name}：${result.message||(result.success?'数字签到成功':'数字签到失败')}`,result.success?'ok':'bad');
     if(result.success)loadAccounts();
   });
