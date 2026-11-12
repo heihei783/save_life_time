@@ -10,8 +10,8 @@ services:
       DATA_DIR: /data
       BIND: 0.0.0.0:1112
       CAS_PROXY_BIND: 0.0.0.0:1113
-      CAS_PROXY_PUBLIC_URL: https://cqupt.xiaohundun.cc
-      MAIN_ORIGIN: https://sign.xiaohundun.cc
+      CAS_PROXY_PUBLIC_URL: 你的ip或者域名
+      MAIN_ORIGIN: 你的ip或者域名
     volumes:
       - winsignin-data:/data
     ports:
